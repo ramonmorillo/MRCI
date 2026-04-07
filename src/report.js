@@ -10,6 +10,11 @@ function localizedWarningMessage(w, tr) {
 }
 
 export function reportHtml(session, scores, lang, tr) {
+  const printDate = new Date().toLocaleDateString(lang === "es" ? "es-ES" : "en-US");
+  const modeLabel = session.scoringMode === "classic" ? tr("modes.classic") : session.scoringMode === "amrci" ? tr("modes.amrci") : tr("modes.compare");
+  const regimenRows = (session?.medications || [])
+    .map((med) => `<tr><td>${esc(med.drugName)}</td><td>${esc(med.dosageForm || med.dosageFormRoute || "")}</td><td>${esc(med.frequency || "")}</td><td>${med.validated ? tr("labels.yes") : tr("labels.no")}</td></tr>`)
+    .join("");
   const rows = (scores?.comparison || [])
     .map(
       (m) => `<tr>
@@ -30,13 +35,20 @@ export function reportHtml(session, scores, lang, tr) {
 
   return `
   <h2>${tr("labels.report_title")}</h2>
-  <p>${tr("disclaimer")}</p>
-  <p>${tr("labels.scoring_mode")}: ${session.scoringMode || "compare"}</p>
+  <p><strong>${tr("labels.date")}:</strong> ${printDate}</p>
+  <p><strong>${tr("labels.scoring_mode")}:</strong> ${modeLabel}</p>
+  <h3>${tr("labels.regimen_summary")}</h3>
+  <table>
+    <thead><tr><th>${tr("results.drug")}</th><th>${tr("results.dosage_form")}</th><th>${tr("results.frequency")}</th><th>${tr("results.validated")}</th></tr></thead>
+    <tbody>${regimenRows || `<tr><td colspan="4">${tr("labels.no_data")}</td></tr>`}</tbody>
+  </table>
+  <h3>${tr("labels.section_breakdown")}</h3>
   <p>${tr("results.mrci_total")}: ${scores?.classic?.total ?? tr("labels.no_data")} | ${tr("results.amrci_total")}: ${scores?.amrci?.total ?? tr("labels.no_data")} | ${tr("results.abs_diff")}: ${scores?.delta ?? tr("labels.no_data")}</p>
   <table>
     <thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("results.section_diff")}</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <h3>${tr("labels.mapping_warnings")}</h3>
-  <ul>${warningRows || `<li>${tr("labels.no_mapping_warnings")}</li>`}</ul>`;
+  <ul>${warningRows || `<li>${tr("labels.no_mapping_warnings")}</li>`}</ul>
+  <p>${tr("disclaimer")}</p>`;
 }
