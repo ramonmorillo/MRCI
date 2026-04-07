@@ -1,28 +1,31 @@
 export function reportHtml(session, scores) {
-  const rows = session.medications
+  const rows = (scores?.comparison || [])
     .map(
       (m) => `<tr>
       <td>${m.drugName}</td>
-      <td>${m.dosageForm || m.dosageFormRoute || ""}</td>
-      <td>${m.route || ""}</td>
-      <td>${m.frequency}</td>
-      <td>${m.prn ? "Yes" : "No"}</td>
-      <td>${m.additionalInstructions}</td>
-      <td>${m.validated ? "Validated" : "Not validated"}</td>
+      <td>${m.mrci}</td>
+      <td>${m.aMrci}</td>
+      <td>${m.difference}</td>
+      <td>A:${m.sectionDiff.A} B:${m.sectionDiff.B} C:${m.sectionDiff.C}</td>
     </tr>`
     )
     .join("");
 
-  const classic = scores?.classic?.total ?? 0;
-  const abr = scores?.abbreviated?.total ?? 0;
-  const delta = scores?.delta ?? 0;
+  const warningRows = (scores?.amrci?.warnings || [])
+    .map(
+      (w) => `<li><strong>${w.medicationName}</strong>: ${w.field} - ${w.message} (${w.type}; needs manual review)</li>`
+    )
+    .join("");
 
   return `
-  <h2>Regimen Report</h2>
+  <h2>Printable Comparison Report</h2>
   <p><strong>Disclaimer:</strong> Support tool only. Not a medical device.</p>
-  <p>Classic Total: ${classic} | A-MRCI Total: ${abr} | Delta: ${delta}</p>
+  <p>Scoring mode: ${session.scoringMode || "compare"}</p>
+  <p>MRCI Total: ${scores?.classic?.total ?? "N/A"} | A-MRCI Total: ${scores?.amrci?.total ?? "N/A"} | Absolute Difference: ${scores?.delta ?? "N/A"}</p>
   <table>
-    <thead><tr><th>Drug</th><th>Form</th><th>Route</th><th>Frequency</th><th>PRN</th><th>Instructions</th><th>Status</th></tr></thead>
+    <thead><tr><th>Drug</th><th>MRCI</th><th>A-MRCI</th><th>Abs Diff</th><th>Section Diff</th></tr></thead>
     <tbody>${rows}</tbody>
-  </table>`;
+  </table>
+  <h3>Mapping warnings</h3>
+  <ul>${warningRows || "<li>No mapping warnings.</li>"}</ul>`;
 }

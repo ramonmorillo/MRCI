@@ -19,5 +19,7 @@ export const defaultSession = () => ({
   language: "en",
   patientLabel: "",
   regimenLabel: "",
+  scoringMode: "compare",
+  aMrciCorrections: {},
   medications: []
 });

@@ -1,0 +1,32 @@
+export const mrciClassicFrequencies = {
+  sectionWeights: {
+    once_daily: 1,
+    twice_daily: 2,
+    three_times_daily: 3,
+    four_times_daily: 4,
+    every_6_hours: 4,
+    every_4_hours: 6,
+    weekly: 0.5,
+    monthly: 0.25,
+    prn_modifier: 0.5,
+    alternating_modifier: 1,
+    unknown: 1
+  },
+  aliases: {
+    daily: "once_daily",
+    "once daily": "once_daily",
+    "every day": "once_daily",
+    bid: "twice_daily",
+    "twice daily": "twice_daily",
+    tid: "three_times_daily",
+    "three times daily": "three_times_daily",
+    qid: "four_times_daily",
+    "four times daily": "four_times_daily",
+    q6h: "every_6_hours",
+    "every 6 hours": "every_6_hours",
+    q4h: "every_4_hours",
+    "every 4 hours": "every_4_hours",
+    weekly: "weekly",
+    monthly: "monthly"
+  }
+};

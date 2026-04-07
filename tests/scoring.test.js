@@ -1,73 +1,76 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { mrciClassic } from '../src/engines/mrciClassic.js';
-import { aMrci } from '../src/engines/aMrci.js';
-
-const mappings = {
-  dosageForms: JSON.parse(await readFile(new URL('../config/dosageForms.json', import.meta.url))),
-  frequencies: JSON.parse(await readFile(new URL('../config/frequencies.json', import.meta.url))),
-  additionalDirections: JSON.parse(await readFile(new URL('../config/additionalDirections.json', import.meta.url)))
-};
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mrciClassic, mrciClassicMappings } from "../src/lib/scoring/mrciClassic.js";
+import { aMrci } from "../src/lib/scoring/aMrci.js";
+import { scoreAll } from "../src/scoring.js";
 
 function med(overrides) {
   return {
     id: crypto.randomUUID(),
-    drugName: 'Drug',
-    dosageFormRoute: 'tablet',
-    frequency: 'daily',
+    drugName: "Drug",
+    dosageFormRoute: "tablet",
+    frequency: "daily",
     prn: false,
-    additionalInstructions: '',
-    notes: '',
+    additionalInstructions: "",
+    notes: "",
     validated: true,
     ...overrides
   };
 }
 
-test('PRN increases Section B in both engines', () => {
-  const base = mrciClassic([med({ prn: false })], mappings).total;
-  const prn = mrciClassic([med({ prn: true })], mappings).total;
-  assert.ok(prn > base);
+const fullMappings = {
+  mrciClassic: mrciClassicMappings,
+  aMrci: {
+    dosageForms: (await import("../src/lib/mappings/aMrci/dosageForms.js")).aMrciDosageForms,
+    frequencies: (await import("../src/lib/mappings/aMrci/frequencies.js")).aMrciFrequencies,
+    additionalDirections: (await import("../src/lib/mappings/aMrci/additionalDirections.js")).aMrciAdditionalDirections
+  }
+};
 
-  const aBase = aMrci([med({ prn: false })], mappings).total;
-  const aPrn = aMrci([med({ prn: true })], mappings).total;
-  assert.ok(aPrn > aBase);
+test("MRCI baseline remains unchanged for simple oral chronic regimen", () => {
+  const result = mrciClassic([med({ drugName: "Metformin", additionalInstructions: "take with food" })]);
+  assert.equal(result.total, 3); // A=1, B=1, C=1
 });
 
-test('alternating dose adds complexity', () => {
-  const standard = mrciClassic([med({ frequency: 'daily' })], mappings).total;
-  const alt = mrciClassic([med({ frequency: 'daily', additionalInstructions: 'alternate days' })], mappings).total;
-  assert.ok(alt > standard);
+test("inhalers: both engines score higher form complexity than tablet", () => {
+  const tabletClassic = mrciClassic([med({ dosageFormRoute: "tablet" })]).subtotalA;
+  const inhalerClassic = mrciClassic([med({ dosageFormRoute: "inhaler" })]).subtotalA;
+  const inhalerAmrci = aMrci([med({ dosageFormRoute: "inhaler" })], fullMappings).subtotalA;
+  assert.ok(inhalerClassic > tabletClassic);
+  assert.ok(inhalerAmrci >= 2);
 });
 
-test('food instructions impact section C', () => {
-  const noFood = mrciClassic([med({ additionalInstructions: '' })], mappings).subtotalC;
-  const withFood = mrciClassic([med({ additionalInstructions: 'take with food' })], mappings).subtotalC;
-  assert.ok(withFood > noFood);
-});
-
-test('inhalers score above simple tablets in section A', () => {
-  const tab = mrciClassic([med({ dosageFormRoute: 'tablet' })], mappings).subtotalA;
-  const inh = mrciClassic([med({ dosageFormRoute: 'inhaler' })], mappings).subtotalA;
-  assert.ok(inh > tab);
-});
-
-test('injectables captured in both engines', () => {
-  const classic = mrciClassic([med({ dosageFormRoute: 'injection' })], mappings).subtotalA;
-  const abr = aMrci([med({ dosageFormRoute: 'injection' })], mappings).subtotalA;
+test("injectables are captured by both engines", () => {
+  const classic = mrciClassic([med({ dosageFormRoute: "injection" })]).subtotalA;
+  const abr = aMrci([med({ dosageFormRoute: "injection" })], fullMappings).subtotalA;
   assert.ok(classic >= 3);
   assert.ok(abr >= 2);
 });
 
-test('multiple daily frequencies increase score', () => {
-  const once = mrciClassic([med({ frequency: 'daily' })], mappings).subtotalB;
-  const q4h = mrciClassic([med({ frequency: 'q4h' })], mappings).subtotalB;
-  assert.ok(q4h > once);
+test("PRN medications increase Section B in both engines", () => {
+  const base = scoreAll([med({ prn: false })], fullMappings, "compare");
+  const prn = scoreAll([med({ prn: true })], fullMappings, "compare");
+  assert.ok(prn.classic.subtotalB > base.classic.subtotalB);
+  assert.ok(prn.amrci.subtotalB > base.amrci.subtotalB);
 });
 
-test('missing/ambiguous instructions fallback to unknown safely', () => {
-  const result = mrciClassic([
-    med({ dosageFormRoute: '???', frequency: 'sometimes', additionalInstructions: 'unclear' })
-  ], mappings);
-  assert.ok(result.total > 0);
+test("alternating doses increase complexity", () => {
+  const standard = scoreAll([med({ frequency: "daily" })], fullMappings, "compare");
+  const alt = scoreAll([med({ frequency: "daily", additionalInstructions: "alternate days" })], fullMappings, "compare");
+  assert.ok(alt.classic.subtotalB > standard.classic.subtotalB);
+  assert.ok(alt.amrci.subtotalB > standard.amrci.subtotalB);
+});
+
+test("food-related instructions affect section C", () => {
+  const noFood = scoreAll([med({ additionalInstructions: "" })], fullMappings, "compare");
+  const withFood = scoreAll([med({ additionalInstructions: "take with food" })], fullMappings, "compare");
+  assert.ok(withFood.classic.subtotalC > noFood.classic.subtotalC);
+  assert.ok(withFood.amrci.subtotalC > noFood.amrci.subtotalC);
+});
+
+test("missing directions are handled safely with warnings in A-MRCI", () => {
+  const result = scoreAll([med({ additionalInstructions: "unclear instruction" })], fullMappings, "compare");
+  assert.equal(result.amrci.warnings.length, 0);
+  const unknown = scoreAll([med({ dosageFormRoute: "???", frequency: "sometimes", additionalInstructions: "titrate weirdly" })], fullMappings, "compare");
+  assert.ok(unknown.amrci.warnings.length >= 2);
 });

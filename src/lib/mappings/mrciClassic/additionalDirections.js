@@ -1,0 +1,24 @@
+export const mrciClassicAdditionalDirections = {
+  sectionWeights: {
+    with_food: 1,
+    without_food: 1,
+    split_or_crush_or_mix: 1,
+    taper_or_variable_schedule: 2,
+    specific_time_of_day: 1,
+    inhaler_technique: 1,
+    monitoring_or_special_instruction: 2,
+    none: 0
+  },
+  keywords: {
+    "with food": "with_food",
+    "take with meals": "with_food",
+    "empty stomach": "without_food",
+    "before breakfast": "specific_time_of_day",
+    "at bedtime": "specific_time_of_day",
+    alternate: "taper_or_variable_schedule",
+    taper: "taper_or_variable_schedule",
+    "rinse mouth": "inhaler_technique",
+    "shake well": "monitoring_or_special_instruction",
+    monitor: "monitoring_or_special_instruction"
+  }
+};
