@@ -1,17 +1,11 @@
-const paths = {
-  dosageForms: "./config/dosageForms.json",
-  frequencies: "./config/frequencies.json",
-  additionalDirections: "./config/additionalDirections.json"
-};
+import { aMrciMappings } from "./lib/scoring/aMrci.js";
+import { mrciClassicMappings } from "./lib/scoring/mrciClassic.js";
 
 export async function loadMappings() {
-  const entries = await Promise.all(
-    Object.entries(paths).map(async ([k, path]) => {
-      const data = await fetch(path).then((r) => r.json());
-      return [k, data];
-    })
-  );
-  return Object.fromEntries(entries);
+  return {
+    mrciClassic: mrciClassicMappings,
+    aMrci: aMrciMappings
+  };
 }
 
 export function normalizeText(value = "") {

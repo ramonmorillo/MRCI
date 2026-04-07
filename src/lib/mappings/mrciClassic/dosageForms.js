@@ -1,0 +1,31 @@
+export const mrciClassicDosageForms = {
+  sectionWeights: {
+    tablet_or_capsule_or_pill: 1,
+    liquid_or_solution_or_suspension: 2,
+    inhaler_or_nebulizer: 3,
+    injection: 3,
+    topical_patch: 3,
+    eye_or_ear_drop: 3,
+    subcutaneous_device: 4,
+    complex_device: 5,
+    unknown: 1
+  },
+  aliases: {
+    tablet: "tablet_or_capsule_or_pill",
+    capsule: "tablet_or_capsule_or_pill",
+    pill: "tablet_or_capsule_or_pill",
+    liquid: "liquid_or_solution_or_suspension",
+    solution: "liquid_or_solution_or_suspension",
+    suspension: "liquid_or_solution_or_suspension",
+    inhaler: "inhaler_or_nebulizer",
+    nebulizer: "inhaler_or_nebulizer",
+    injection: "injection",
+    injectable: "injection",
+    patch: "topical_patch",
+    drop: "eye_or_ear_drop",
+    "eye drop": "eye_or_ear_drop",
+    "ear drop": "eye_or_ear_drop",
+    pen: "subcutaneous_device",
+    pump: "complex_device"
+  }
+};

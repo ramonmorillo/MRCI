@@ -137,3 +137,6 @@ pre {
     display: block !important;
   }
 }
+.tab-btn.active {
+  background: #0f3d99;
+}
