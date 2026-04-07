@@ -1,0 +1,42 @@
+{
+  "regimens": [
+    {
+      "name": "Diabetes + COPD demo",
+      "medications": [
+        {
+          "id": "m1",
+          "drugName": "Metformin 500 mg",
+          "dosageFormRoute": "tablet",
+          "frequency": "bid",
+          "prn": false,
+          "additionalInstructions": "take with meals",
+          "notes": "",
+          "source": "demo",
+          "validated": true
+        },
+        {
+          "id": "m2",
+          "drugName": "Albuterol",
+          "dosageFormRoute": "inhaler",
+          "frequency": "q4h",
+          "prn": true,
+          "additionalInstructions": "PRN wheeze, rinse mouth",
+          "notes": "",
+          "source": "demo",
+          "validated": true
+        },
+        {
+          "id": "m3",
+          "drugName": "Insulin glargine",
+          "dosageFormRoute": "injection",
+          "frequency": "daily",
+          "prn": false,
+          "additionalInstructions": "at bedtime",
+          "notes": "",
+          "source": "demo",
+          "validated": true
+        }
+      ]
+    }
+  ]
+}

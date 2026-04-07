@@ -1,0 +1,41 @@
+:root {
+  --bg: #f7f9fc;
+  --card: #fff;
+  --text: #162033;
+  --muted: #5f6b7a;
+  --primary: #2c6bed;
+}
+body {
+  margin: 0;
+  font-family: Inter, Segoe UI, Arial, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+#app {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+section,
+header {
+  background: var(--card);
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+.toolbar { display: flex; gap: .5rem; flex-wrap: wrap; }
+button,.import-btn { background: var(--primary); color: white; border: none; border-radius: 8px; padding: .45rem .75rem; cursor: pointer; }
+.import-btn input { display:none; }
+.disclaimer { color: #8c1c13; font-weight: 600; }
+table { width:100%; border-collapse: collapse; font-size: .9rem; }
+th,td { border: 1px solid #e5e8ef; padding: .4rem; vertical-align: top; }
+input,textarea,select { width: 100%; box-sizing: border-box; padding: .35rem; }
+.cards { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
+article { border: 1px solid #dce2f0; border-radius: 8px; padding: .75rem; }
+.printable { background: #fffef6; }
+@media print {
+  .toolbar, textarea, button, input[type=file], #parseText { display: none !important; }
+  body { background: white; }
+  section, header { box-shadow: none; border: 1px solid #ddd; }
+}
