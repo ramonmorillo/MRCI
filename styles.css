@@ -91,6 +91,11 @@ article { border: 1px solid #d9e4f4; border-radius: 10px; padding: .75rem; backg
 .tab-btn.active { background: #0f3d99; }
 .split-view { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .help-dialog { border: none; border-radius: 10px; max-width: 540px; }
+.cima-panel { border: 1px solid #d7e3f5; border-radius: 10px; padding: .7rem; margin: .8rem 0; background: #f8fbff; }
+.cima-toolbar > label { min-width: 180px; }
+.cima-results { display: grid; gap: .4rem; margin-top: .5rem; }
+.cima-result { text-align: left; background: #fff; color: var(--text); border: 1px solid #c8d8ee; width: 100%; }
+.cima-result small { display: block; color: #54657f; }
 
 .printable { margin-top: 1rem; border: 1px dashed #a8b8d1; padding: .8rem; border-radius: 10px; }
 
