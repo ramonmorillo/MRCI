@@ -8,10 +8,11 @@ import { t } from "./i18n.js";
 import { parseMedicationText } from "./lib/parsing/textParser.js";
 import { searchMedications, getMedicationDetail, getPresentationDetail, getSafetyNotes, getSupplyIssues } from "./lib/integrations/cimaApi.js";
 import { buildMedicationFromCima, applyCimaSelectionToMedication } from "./lib/integrations/cimaMedicationMapper.js";
+import { createDebouncedSearch, filterAndRankCimaResults, highlightMatch } from "./lib/integrations/cimaSearchController.js";
 
 const ROUTE_OPTIONS = ["oral", "inhaled", "subcutaneous", "intravenous", "topical", "ophthalmic", "otic", "other"];
 const RESULTS_TABS = ["summary", "by-medication", "by-section", "warnings"];
-const STEPS = ["input", "validation", "results", "comparison"];
+const STEPS = ["input", "validation", "results", "comparison", "report"];
 
 const state = {
   mappings: null,
@@ -25,10 +26,12 @@ const state = {
   cima: {
     query: "",
     type: "name",
-    loading: false,
+    status: "idle",
     error: "",
     results: [],
-    selectedIdx: 0
+    selectedIdx: 0,
+    selectedResultId: "",
+    minQueryLength: 3
   }
 };
 
@@ -129,12 +132,13 @@ function parseReviewPane() {
 
 function cimaSearchPanel() {
   const rowOptions = state.session.medications.map((med, idx) => `<option value="${idx}" ${idx === state.cima.selectedIdx ? "selected" : ""}>#${idx + 1} ${esc(med.drugName || tr("labels.new_medication"))}</option>`).join("");
-  const results = state.cima.results.map((item, idx) => `<button class="cima-result ${idx === 0 ? "active" : ""}" data-action="select-cima-result" data-result-idx="${idx}">
-    <strong>${esc(item.name || tr("labels.missing"))}</strong>
-    <small>${tr("labels.form_short")}: ${esc(item.form || tr("labels.missing"))} | ${tr("results.route")}: ${esc(item.route || tr("labels.missing"))} | CN: ${esc(item.nationalCode || "—")} | ${tr("labels.reg_short")}: ${esc(item.registrationNumber || "—")}</small>
+  const results = state.cima.results.map((item, idx) => `<button class="cima-result ${item.id === state.cima.selectedResultId ? "active" : ""}" data-action="select-cima-result" data-result-idx="${idx}">
+    <strong>${highlightMatch(esc(item.name || tr("labels.missing")), state.cima.query)}</strong>
+    <small>${tr("labels.form_short")}: ${highlightMatch(esc(item.form || tr("labels.missing")), state.cima.query)} | ${tr("results.route")}: ${esc(item.route || tr("labels.missing"))} | CN: ${highlightMatch(esc(item.nationalCode || "—"), state.cima.query)} | ${tr("labels.reg_short")}: ${highlightMatch(esc(item.registrationNumber || "—"), state.cima.query)}</small>
+    <small>${tr("labels.active_ingredients")}: ${highlightMatch(esc(item.activeIngredients || tr("labels.missing")), state.cima.query)}</small>
   </button>`).join("");
 
-  return `<section class="cima-panel">
+  return `<section class="cima-panel card">
     <h3>${tr("labels.cima_lookup")}</h3>
     <p class="note">${tr("labels.cima_warning")}</p>
     <div class="toolbar cima-toolbar">
@@ -149,14 +153,14 @@ function cimaSearchPanel() {
       <label>${tr("labels.search")}
         <input id="cimaQuery" value="${esc(state.cima.query)}" placeholder="${tr("labels.cima_placeholder")}">
       </label>
-      <button id="cimaSearchBtn">${tr("buttons.search_cima")}</button>
       <label>${tr("labels.apply_to_row")}
         <select id="cimaApplyRow">${rowOptions}<option value="-1">+ ${tr("buttons.add")}</option></select>
       </label>
     </div>
-    ${state.cima.loading ? `<p>${tr("labels.loading")}</p>` : ""}
+    ${state.cima.status === "idle" && state.cima.query.trim().length > 0 && state.cima.query.trim().length < state.cima.minQueryLength ? `<p>${tr("labels.cima_min_chars", { count: state.cima.minQueryLength })}</p>` : ""}
+    ${state.cima.status === "loading" ? `<p>${tr("labels.cima_searching")}</p>` : ""}
     ${state.cima.error ? `<p class="issues">${esc(state.cima.error)}</p>` : ""}
-    ${!state.cima.loading && !state.cima.error && state.cima.query && !state.cima.results.length ? `<p>${tr("labels.no_cima_results")}</p>` : ""}
+    ${state.cima.status === "success" && !state.cima.error && state.cima.query && !state.cima.results.length ? `<p>${tr("labels.no_cima_results")}</p>` : ""}
     <div class="cima-results">${results}</div>
   </section>`;
 }
@@ -189,7 +193,7 @@ function renderResults(scores) {
   if (!scores) return `<h2>${tr("nav.results")}</h2><p>${tr("labels.run_to_see_results")}</p>`;
   const tabs = RESULTS_TABS.map((tab) => `<button class="tab-btn ${state.resultsTab === tab ? "active" : ""}" data-tab="${tab}">${tab === "by-medication" ? tr("labels.by_medication") : tab === "by-section" ? tr("labels.by_section") : tab === "warnings" ? tr("labels.mapping_warnings") : tr("labels.summary")}</button>`).join("");
   const tabBody = state.resultsTab === "summary" ? summaryTab(scores) : state.resultsTab === "by-medication" ? byMedicationTab(scores) : state.resultsTab === "by-section" ? bySectionTab(scores) : warningsTab(scores);
-  return `<h2>${tr("nav.results")}</h2><p>${tr("labels.validated_count")}: ${scores.eligibleCount}</p><div class="toolbar">${tabs}</div>${tabBody}<section id="printable" class="printable">${reportHtml(state.session, scores, state.session.language, tr)}</section>`;
+  return `<h2>${tr("nav.results")}</h2><p>${tr("labels.validated_count")}: ${scores.eligibleCount}</p><div class="toolbar">${tabs}</div>${tabBody}`;
 }
 
 function sectionVisible(step) {
@@ -218,7 +222,7 @@ function render() {
       <select id="inputMode"><option value="manual" ${state.session.inputMode === "manual" ? "selected" : ""}>${tr("labels.manual_entry")}</option><option value="ai" ${state.session.inputMode === "ai" ? "selected" : ""}>${tr("labels.ai_assist")}</option></select></label>
       <button id="addMed">${tr("buttons.add")}</button>
       <button id="saveSnapshot">${tr("buttons.save")}</button><select id="snapshotSelect"><option value="">${tr("labels.load_session")}</option>${listSnapshots().map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join("")}</select>
-      <button id="exportJson">${tr("buttons.export_json")}</button><button id="exportCsv">${tr("buttons.export_csv")}</button><button id="print">${tr("buttons.print")}</button><label class="import-btn">${tr("buttons.import")}<input type="file" id="importFile" accept="application/json"></label>
+      <button id="exportJson">${tr("buttons.export_json")}</button><button id="exportCsv">${tr("buttons.export_csv")}</button><button id="print">${tr("buttons.print_report")}</button><label class="import-btn">${tr("buttons.import")}<input type="file" id="importFile" accept="application/json"></label>
     </div>
     ${state.session.inputMode === "ai" ? `<p class="note">${tr("labels.reviewed_required")}</p><div class="split-view"><div><h3>${tr("labels.free_text")}</h3><textarea id="freeText" rows="12" placeholder="...">${esc(state.session.rawInputText || "")}</textarea><button id="parseText">${tr("buttons.parse")}</button></div><div><h3>${tr("labels.extraction_preview")}</h3>${parseReviewPane()}</div></div>` : `<p>${tr("labels.manual_workflow_active")}</p>`}
     ${cimaSearchPanel()}
@@ -231,6 +235,7 @@ function render() {
   <section class="${sectionVisible("results")}">${renderResults(state.scored)}</section>
 
   <section class="${sectionVisible("comparison")}">${state.scored ? bySectionTab(state.scored) + byMedicationTab(state.scored) : `<p>${tr("labels.run_to_see_results")}</p>`}</section>
+  <section class="${sectionVisible("report")}"><h2>${tr("nav.report")}</h2><p>${tr("labels.report_ready_hint")}</p><div class="toolbar"><button id="reportPrintBtn">${tr("buttons.print_report")}</button><button id="reportDownloadBtn">${tr("buttons.download_report")}</button></div><section id="printable" class="printable">${reportHtml(state.session, state.scored, state.session.language, tr)}</section></section>
   ${state.showHelp ? `<dialog open class="help-dialog"><h3>${tr("nav.help")}</h3><p>${tr("labels.help_body")}</p><button id="closeHelp">OK</button></dialog>` : ""}`;
 
   document.querySelectorAll("select[data-field='additionalInstructionsMulti']").forEach((el) => {
@@ -269,26 +274,34 @@ function parsedToMedication(candidate) {
   };
 }
 
-async function runCimaSearch() {
-  state.cima.loading = true;
-  state.cima.error = "";
-  state.cima.results = [];
-  render();
-  try {
-    const results = await searchMedications(state.cima.query, { type: state.cima.type });
-    const enriched = await Promise.all(results.slice(0, 12).map(async (item) => {
-      const presentations = await getPresentationDetail({ registrationNumber: item.registrationNumber });
-      return { ...item, nationalCode: presentations[0]?.nationalCode || "" };
-    }));
-    state.cima.results = enriched;
-  } catch (error) {
-    state.cima.error = tr("errors.cima_failed");
-    console.error(error);
-  } finally {
-    state.cima.loading = false;
+const cimaSearchRunner = createDebouncedSearch({
+  minLength: state.cima.minQueryLength,
+  waitMs: 300,
+  searchFn: async (query) => {
+    const apiResults = await searchMedications(query, { type: state.cima.type });
+    const enriched = await Promise.all(
+      apiResults.slice(0, 24).map(async (item) => {
+        const presentations = await getPresentationDetail({ registrationNumber: item.registrationNumber });
+        return { ...item, nationalCode: item.nationalCode || presentations[0]?.nationalCode || "" };
+      })
+    );
+    return filterAndRankCimaResults(enriched, query).slice(0, 12);
+  },
+  onState: (nextState) => {
+    state.cima.status = nextState.type;
+    state.cima.error = "";
+    if (nextState.type === "success" || nextState.type === "idle") {
+      state.cima.results = nextState.results || [];
+      state.cima.selectedResultId = state.cima.results[0]?.id || "";
+    }
+    if (nextState.type === "loading") state.cima.results = [];
+    if (nextState.type === "error") {
+      state.cima.results = [];
+      state.cima.error = tr("errors.cima_failed");
+    }
     render();
   }
-}
+});
 
 async function importCimaResult(resultIdx) {
   const selected = state.cima.results[resultIdx];
@@ -310,6 +323,7 @@ async function importCimaResult(resultIdx) {
       state.session.medications.push(created);
     }
     state.scored = null;
+    state.cima.selectedResultId = selected.id || "";
     persist();
   } catch (error) {
     state.cima.error = tr("errors.cima_failed");
@@ -320,13 +334,11 @@ async function importCimaResult(resultIdx) {
 
 function wireEvents() {
   const cimaSearchType = document.querySelector("#cimaSearchType");
-  if (cimaSearchType) cimaSearchType.onchange = (e) => { state.cima.type = e.target.value; };
+  if (cimaSearchType) cimaSearchType.onchange = (e) => { state.cima.type = e.target.value; cimaSearchRunner.run(state.cima.query); };
   const cimaQuery = document.querySelector("#cimaQuery");
-  if (cimaQuery) cimaQuery.oninput = (e) => { state.cima.query = e.target.value; };
+  if (cimaQuery) cimaQuery.oninput = (e) => { state.cima.query = e.target.value; cimaSearchRunner.run(state.cima.query); };
   const cimaApplyRow = document.querySelector("#cimaApplyRow");
   if (cimaApplyRow) cimaApplyRow.onchange = (e) => { state.cima.selectedIdx = Number(e.target.value) || 0; };
-  const cimaSearchBtn = document.querySelector("#cimaSearchBtn");
-  if (cimaSearchBtn) cimaSearchBtn.onclick = () => runCimaSearch();
   document.querySelectorAll("[data-action='select-cima-result']").forEach((el) => {
     el.onclick = async (e) => {
       const idx = Number(e.currentTarget.dataset.resultIdx);
@@ -389,7 +401,11 @@ function wireEvents() {
   document.querySelector("#resetSession").onclick = () => { state.session = defaultSession(); state.scored = null; resetStorage(); persist(); };
   document.querySelector("#exportJson").onclick = () => downloadText("mrci-session.json", exportJson(state.session, state.scored), "application/json");
   document.querySelector("#exportCsv").onclick = () => downloadText("mrci-medications.csv", exportCsv(state.session.medications, state.scored, state.session.scoringMode, state.session), "text/csv");
-  document.querySelector("#print").onclick = () => window.print();
+  document.querySelector("#print").onclick = () => { state.activeStep = "report"; render(); setTimeout(() => window.print(), 0); };
+  const reportPrintBtn = document.querySelector("#reportPrintBtn");
+  if (reportPrintBtn) reportPrintBtn.onclick = () => window.print();
+  const reportDownloadBtn = document.querySelector("#reportDownloadBtn");
+  if (reportDownloadBtn) reportDownloadBtn.onclick = () => window.print();
   document.querySelector("#importFile").onchange = async (e) => { const file = e.target.files[0]; if (file) { state.session = importFromJson(await file.text()); state.scored = null; persist(); } };
 
   document.querySelectorAll("[data-field]").forEach((el) => {
