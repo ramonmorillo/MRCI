@@ -9,10 +9,67 @@ import { parseMedicationText } from "./lib/parsing/textParser.js";
 import { searchMedications, getMedicationDetail, getPresentationDetail, getSafetyNotes, getSupplyIssues } from "./lib/integrations/cimaApi.js";
 import { buildMedicationFromCima, applyCimaSelectionToMedication } from "./lib/integrations/cimaMedicationMapper.js";
 import { createDebouncedSearch, filterAndRankCimaResults, highlightMatch } from "./lib/integrations/cimaSearchController.js";
+import { appendMedication, removeMedicationAt, duplicateMedicationAt } from "./lib/medicationEntry/workflow.js";
 
-const ROUTE_OPTIONS = ["oral", "inhaled", "subcutaneous", "intravenous", "topical", "ophthalmic", "otic", "other"];
+const ROUTE_OPTIONS = [
+  { key: "oral", label_en: "Oral", label_es: "Oral" },
+  { key: "inhaled", label_en: "Inhaled", label_es: "Inhalada" },
+  { key: "subcutaneous", label_en: "Subcutaneous", label_es: "Subcutánea" },
+  { key: "intravenous", label_en: "Intravenous", label_es: "Intravenosa" },
+  { key: "topical", label_en: "Topical", label_es: "Tópica" },
+  { key: "ophthalmic", label_en: "Ophthalmic", label_es: "Oftálmica" },
+  { key: "otic", label_en: "Otic", label_es: "Ótica" },
+  { key: "other", label_en: "Other", label_es: "Otra" }
+];
 const RESULTS_TABS = ["summary", "by-medication", "by-section", "warnings"];
 const STEPS = ["input", "validation", "results", "comparison", "report"];
+const DOSAGE_FORM_LABELS = {
+  tablet: { label_en: "Tablet", label_es: "Comprimido", key: "tablet" },
+  capsule: { label_en: "Capsule", label_es: "Cápsula", key: "capsule" },
+  pill: { label_en: "Pill", label_es: "Píldora", key: "pill" },
+  liquid: { label_en: "Liquid", label_es: "Líquido", key: "liquid" },
+  solution: { label_en: "Solution", label_es: "Solución", key: "solution" },
+  suspension: { label_en: "Suspension", label_es: "Suspensión", key: "suspension" },
+  inhaler: { label_en: "Inhaler", label_es: "Inhalador", key: "inhaler" },
+  nebulizer: { label_en: "Nebulizer", label_es: "Nebulizador", key: "nebulizer" },
+  injection: { label_en: "Injection", label_es: "Inyección", key: "injection" },
+  injectable: { label_en: "Injectable", label_es: "Inyectable", key: "injectable" },
+  patch: { label_en: "Patch", label_es: "Parche", key: "patch" },
+  drop: { label_en: "Drop", label_es: "Gotas", key: "drop" },
+  "eye drop": { label_en: "Eye drop", label_es: "Gotas oftálmicas", key: "eye_drop" },
+  "ear drop": { label_en: "Ear drop", label_es: "Gotas óticas", key: "ear_drop" },
+  pen: { label_en: "Pen device", label_es: "Dispositivo tipo pluma", key: "pen" },
+  pump: { label_en: "Pump", label_es: "Bomba", key: "pump" }
+};
+const FREQUENCY_LABELS = {
+  daily: { key: "daily", label_en: "Daily", label_es: "Diaria" },
+  "once daily": { key: "once_daily", label_en: "Once daily", label_es: "Una vez al día" },
+  "every day": { key: "every_day", label_en: "Every day", label_es: "Cada día" },
+  bid: { key: "bid", label_en: "Twice daily (BID)", label_es: "Dos veces al día (BID)" },
+  "twice daily": { key: "twice_daily", label_en: "Twice daily", label_es: "Dos veces al día" },
+  tid: { key: "tid", label_en: "Three times daily (TID)", label_es: "Tres veces al día (TID)" },
+  "three times daily": { key: "three_times_daily", label_en: "Three times daily", label_es: "Tres veces al día" },
+  qid: { key: "qid", label_en: "Four times daily (QID)", label_es: "Cuatro veces al día (QID)" },
+  "four times daily": { key: "four_times_daily", label_en: "Four times daily", label_es: "Cuatro veces al día" },
+  q6h: { key: "q6h", label_en: "Every 6 hours", label_es: "Cada 6 horas" },
+  "every 6 hours": { key: "every_6_hours", label_en: "Every 6 hours", label_es: "Cada 6 horas" },
+  q4h: { key: "q4h", label_en: "Every 4 hours", label_es: "Cada 4 horas" },
+  "every 4 hours": { key: "every_4_hours", label_en: "Every 4 hours", label_es: "Cada 4 horas" },
+  weekly: { key: "weekly", label_en: "Weekly", label_es: "Semanal" },
+  monthly: { key: "monthly", label_en: "Monthly", label_es: "Mensual" }
+};
+const DIRECTION_LABELS = {
+  "with food": { key: "with_food", label_en: "With food", label_es: "Con comida" },
+  "take with meals": { key: "with_meals", label_en: "Take with meals", label_es: "Tomar con las comidas" },
+  "empty stomach": { key: "empty_stomach", label_en: "Empty stomach", label_es: "En ayunas" },
+  "before breakfast": { key: "before_breakfast", label_en: "Before breakfast", label_es: "Antes del desayuno" },
+  "at bedtime": { key: "at_bedtime", label_en: "At bedtime", label_es: "Al acostarse" },
+  alternate: { key: "alternate", label_en: "Alternating schedule", label_es: "Pauta alternante" },
+  taper: { key: "taper", label_en: "Taper", label_es: "Descenso progresivo" },
+  "rinse mouth": { key: "rinse_mouth", label_en: "Rinse mouth", label_es: "Enjuagar la boca" },
+  "shake well": { key: "shake_well", label_en: "Shake well", label_es: "Agitar bien" },
+  monitor: { key: "monitor", label_en: "Monitoring required", label_es: "Requiere monitorización" }
+};
 
 const state = {
   mappings: null,
@@ -25,14 +82,15 @@ const state = {
   showHelp: false,
   cima: {
     query: "",
-    type: "name",
+    type: "smart",
     status: "idle",
     error: "",
     results: [],
-    selectedIdx: 0,
     selectedResultId: "",
     minQueryLength: 3
-  }
+  },
+  entryMedication: defaultMedication(),
+  editingMedicationIdx: null
 };
 
 const root = document.querySelector("#app");
@@ -96,29 +154,54 @@ function validateMedications() {
   });
 }
 
-function medRow(med, idx, validationMap) {
-  const directionOptions = Object.keys(state.mappings?.mrciClassic?.additionalDirections?.keywords || {}).sort().map((k) => `<option value="${k}">${k}</option>`).join("");
-  const selectedDirections = splitInstructions(med.additionalInstructions);
-  const invalid = (field) => (validationMap[`${idx}:${field}`] ? "invalid" : "");
-  const lowConfidence = (field) => (med.confidence?.[field]?.confidence === "low" ? "uncertain" : "");
-  const validationClass = med.validated ? "valid-row" : "";
+function optionLabel(option) {
+  return state.session.language === "es" ? option.label_es : option.label_en;
+}
 
-  return `<tr class="${validationClass}">
-<td><input class="${invalid("drugName")} ${lowConfidence("drugName")}" data-field="drugName" data-idx="${idx}" value="${esc(med.drugName)}"></td>
-<td><input class="${lowConfidence("strength")}" data-field="strength" data-idx="${idx}" value="${esc(med.strength || "")}" placeholder="10 mg"></td>
-<td><select title="${tr("tooltips.dosage_form")}" class="${invalid("dosageForm")} ${lowConfidence("dosageForm")}" data-field="dosageForm" data-idx="${idx}"><option value="">—</option>${optionsFromAliases(state.mappings?.mrciClassic?.dosageForms?.aliases).map((v) => `<option value="${v}" ${med.dosageForm === v ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-<td><select data-field="route" data-idx="${idx}"><option value="">—</option>${ROUTE_OPTIONS.map((r) => `<option value="${r}" ${med.route === r ? "selected" : ""}>${r}</option>`).join("")}</select></td>
-<td><select title="${tr("tooltips.frequency")}" class="${invalid("frequency")} ${lowConfidence("frequency")}" data-field="frequency" data-idx="${idx}"><option value="">—</option>${optionsFromAliases(state.mappings?.mrciClassic?.frequencies?.aliases).map((v) => `<option value="${v}" ${med.frequency === v ? "selected" : ""}>${v}</option>`).join("")}</select></td>
-<td><input type="checkbox" data-field="prn" data-idx="${idx}" ${med.prn ? "checked" : ""}></td>
-<td><select title="${tr("tooltips.instructions")}" multiple data-field="additionalInstructionsMulti" data-idx="${idx}">${directionOptions}</select><small>${tr("labels.ctrl_multi")}</small></td>
-<td><input data-field="notes" data-idx="${idx}" value="${esc(med.notes)}"></td>
-<td><input data-field="cimaNationalCode" data-idx="${idx}" value="${esc(med.cimaNationalCode || "")}" placeholder="847123"></td>
-<td><input data-field="cimaRegistrationNumber" data-idx="${idx}" value="${esc(med.cimaRegistrationNumber || "")}" placeholder="51347"></td>
-<td><input type="checkbox" data-field="validated" data-idx="${idx}" ${med.validated ? "checked" : ""}></td>
-<td class="actions"><button data-action="duplicate-med" data-idx="${idx}">${tr("buttons.duplicate")}</button><button class="ghost" data-action="delete-med" data-idx="${idx}">${tr("buttons.delete")}</button></td>
-</tr><tr class="hint-row"><td colspan="12">${tr("labels.evidence")}: ${esc(med.sourceEvidence || tr("labels.manual_entry"))} | ${tr("labels.selected_directions")}: ${esc(selectedDirections.join("; ") || tr("labels.none"))} ${med.extractionFlags?.length ? `| ${tr("parsing.flags")}: ${esc(med.extractionFlags.map(translateDynamicText).join(", "))}` : ""}
-<details><summary>${tr("labels.cima_info")}</summary><div>${tr("labels.presentation")}: <input data-field="cimaPresentation" data-idx="${idx}" value="${esc(med.cimaPresentation || "")}"></div><div>${tr("labels.active_ingredients")}: <input data-field="cimaActiveIngredients" data-idx="${idx}" value="${esc(med.cimaActiveIngredients || "")}"></div><div>${tr("results.strength")}: <input data-field="cimaDose" data-idx="${idx}" value="${esc(med.cimaDose || "")}"></div><div>${tr("labels.supply_issue")}: ${med.cimaSupplyIssue ? tr("labels.yes") : tr("labels.no")}</div>${med.cimaProductUrl ? `<div><a href="${esc(med.cimaProductUrl)}" target="_blank" rel="noreferrer">${tr("labels.official_info_link")}</a></div>` : ""}${(med.cimaSafetyNotes || []).length ? `<ul>${med.cimaSafetyNotes.slice(0, 3).map((n) => `<li>${esc(n.asunto || n.ref || n.num || "")}</li>`).join("")}</ul>` : `<div>${tr("labels.no_safety_notes")}</div>`}</details>
-</td></tr>`;
+function localizedOptions(values = [], catalog = {}) {
+  return values.map((key) => {
+    const option = catalog[key] || { key, label_en: key, label_es: key };
+    return `<option value="${key}">${esc(optionLabel(option))}</option>`;
+  }).join("");
+}
+
+function medicationEntryForm(validationMap) {
+  const med = state.entryMedication;
+  const invalid = (field) => (validationMap[`entry:${field}`] ? "invalid" : "");
+  const formValues = optionsFromAliases(state.mappings?.mrciClassic?.dosageForms?.aliases);
+  const freqValues = optionsFromAliases(state.mappings?.mrciClassic?.frequencies?.aliases);
+  const directionValues = Object.keys(state.mappings?.mrciClassic?.additionalDirections?.keywords || {}).sort();
+  const actionLabel = state.editingMedicationIdx === null ? tr("buttons.add") : tr("buttons.save_changes");
+  return `<section class="card entry-form">
+    <h3>${tr("labels.medication_entry")}</h3>
+    <div class="entry-grid">
+      <label>${tr("results.drug")}<input class="${invalid("drugName")}" data-entry-field="drugName" value="${esc(med.drugName || "")}"></label>
+      <label>${tr("results.strength")}<input data-entry-field="strength" value="${esc(med.strength || "")}" placeholder="10 mg"></label>
+      <label>${tr("results.dosage_form")}<select data-entry-field="dosageForm"><option value="">—</option>${localizedOptions(formValues, DOSAGE_FORM_LABELS)}</select></label>
+      <label>${tr("results.route")}<select data-entry-field="route"><option value="">—</option>${ROUTE_OPTIONS.map((r) => `<option value="${r.key}">${optionLabel(r)}</option>`).join("")}</select></label>
+      <label>${tr("results.frequency")}<select data-entry-field="frequency"><option value="">—</option>${localizedOptions(freqValues, FREQUENCY_LABELS)}</select></label>
+      <label class="inline">${tr("results.prn")}<input type="checkbox" data-entry-field="prn" ${med.prn ? "checked" : ""}></label>
+      <label>${tr("results.additional_instructions")}<select multiple data-entry-field="additionalInstructionsMulti">${localizedOptions(directionValues, DIRECTION_LABELS)}</select></label>
+      <label>${tr("results.notes")}<input data-entry-field="notes" value="${esc(med.notes || "")}"></label>
+      <label class="inline">${tr("results.validated")}<input type="checkbox" data-entry-field="validated" ${med.validated ? "checked" : ""}></label>
+    </div>
+    <details><summary>${tr("labels.technical_details")}</summary>
+      <div class="entry-grid">
+        <label>${tr("labels.cn_label")}<input data-entry-field="cimaNationalCode" value="${esc(med.cimaNationalCode || "")}"></label>
+        <label>${tr("labels.reg_label")}<input data-entry-field="cimaRegistrationNumber" value="${esc(med.cimaRegistrationNumber || "")}"></label>
+      </div>
+    </details>
+    <div class="toolbar"><button id="addMedicationBtn" class="primary-cta">${actionLabel}</button>${state.editingMedicationIdx !== null ? `<button id="cancelEditMedication" class="ghost">${tr("buttons.cancel")}</button>` : ""}</div>
+  </section>`;
+}
+
+function regimenPanel() {
+  return `<section class="card regimen-panel">
+    <h3>${tr("labels.regimen_list")}</h3>
+    <p><strong>${tr("labels.regimen_count", { count: state.session.medications.length })}</strong></p>
+    <table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.dosage_form")}</th><th>${tr("results.frequency")}</th><th>${tr("results.prn")}</th><th>${tr("results.additional_instructions")}</th><th>${tr("labels.row_actions")}</th></tr></thead>
+    <tbody>${state.session.medications.map((med, idx) => `<tr><td>${esc(med.drugName || tr("labels.missing"))}</td><td>${esc((DOSAGE_FORM_LABELS[med.dosageForm]?.[state.session.language === "es" ? "label_es" : "label_en"]) || med.dosageForm || "—")}</td><td>${esc((FREQUENCY_LABELS[med.frequency]?.[state.session.language === "es" ? "label_es" : "label_en"]) || med.frequency || "—")}</td><td>${med.prn ? tr("labels.yes") : tr("labels.no")}</td><td>${esc(splitInstructions(med.additionalInstructions).join("; ") || "—")}</td><td class="actions"><button data-action="edit-med" data-idx="${idx}">${tr("buttons.edit")}</button><button data-action="duplicate-med" data-idx="${idx}">${tr("buttons.duplicate")}</button><button class="ghost" data-action="delete-med" data-idx="${idx}">${tr("buttons.delete")}</button><button class="ghost" data-action="move-up-med" data-idx="${idx}">↑</button><button class="ghost" data-action="move-down-med" data-idx="${idx}">↓</button></td></tr>`).join("")}</tbody></table>
+  </section>`;
 }
 
 function parseReviewPane() {
@@ -131,7 +214,6 @@ function parseReviewPane() {
 }
 
 function cimaSearchPanel() {
-  const rowOptions = state.session.medications.map((med, idx) => `<option value="${idx}" ${idx === state.cima.selectedIdx ? "selected" : ""}>#${idx + 1} ${esc(med.drugName || tr("labels.new_medication"))}</option>`).join("");
   const results = state.cima.results.map((item, idx) => `<button class="cima-result ${item.id === state.cima.selectedResultId ? "active" : ""}" data-action="select-cima-result" data-result-idx="${idx}">
     <strong>${highlightMatch(esc(item.name || tr("labels.missing")), state.cima.query)}</strong>
     <small>${tr("labels.form_short")}: ${highlightMatch(esc(item.form || tr("labels.missing")), state.cima.query)} | ${tr("results.route")}: ${esc(item.route || tr("labels.missing"))} | CN: ${highlightMatch(esc(item.nationalCode || "—"), state.cima.query)} | ${tr("labels.reg_short")}: ${highlightMatch(esc(item.registrationNumber || "—"), state.cima.query)}</small>
@@ -144,17 +226,13 @@ function cimaSearchPanel() {
     <div class="toolbar cima-toolbar">
       <label>${tr("labels.cima_search_type")}
         <select id="cimaSearchType">
+          <option value="smart" ${state.cima.type === "smart" ? "selected" : ""}>${tr("labels.search_smart")}</option>
           <option value="name" ${state.cima.type === "name" ? "selected" : ""}>${tr("labels.search_brand")}</option>
           <option value="ingredient" ${state.cima.type === "ingredient" ? "selected" : ""}>${tr("labels.search_ingredient")}</option>
-          <option value="nationalCode" ${state.cima.type === "nationalCode" ? "selected" : ""}>${tr("labels.search_cn")}</option>
-          <option value="registration" ${state.cima.type === "registration" ? "selected" : ""}>${tr("labels.search_registration")}</option>
         </select>
       </label>
       <label>${tr("labels.search")}
         <input id="cimaQuery" value="${esc(state.cima.query)}" placeholder="${tr("labels.cima_placeholder")}">
-      </label>
-      <label>${tr("labels.apply_to_row")}
-        <select id="cimaApplyRow">${rowOptions}<option value="-1">+ ${tr("buttons.add")}</option></select>
       </label>
     </div>
     ${state.cima.status === "idle" && state.cima.query.trim().length > 0 && state.cima.query.trim().length < state.cima.minQueryLength ? `<p>${tr("labels.cima_min_chars", { count: state.cima.minQueryLength })}</p>` : ""}
@@ -205,6 +283,12 @@ function render() {
   document.title = tr("app_title");
   state.validation = validateMedications();
   const validationMap = Object.fromEntries(state.validation.map((v) => [`${v.idx}:${v.field}`, true]));
+  if (!state.entryMedication?.id) state.entryMedication = defaultMedication();
+  if (!state.entryMedication.drugName?.trim() && state.entryMedication.frequency === "") {
+    state.validation.forEach((v) => {
+      if (v.idx === state.editingMedicationIdx) validationMap[`entry:${v.field}`] = true;
+    });
+  }
   const lang = state.session.language || "en";
   const blockingAiReview = state.session.inputMode === "ai" && state.session.lastParseResult && !state.parseUi.confirmed;
 
@@ -220,13 +304,11 @@ function render() {
       <select id="scoreMode"><option value="classic" ${state.session.scoringMode === "classic" ? "selected" : ""}>${tr("modes.classic")}</option><option value="amrci" ${state.session.scoringMode === "amrci" ? "selected" : ""}>${tr("modes.amrci")}</option><option value="compare" ${state.session.scoringMode === "compare" ? "selected" : ""}>${tr("modes.compare")}</option></select></label>
       <label>${tr("labels.input_mode")}
       <select id="inputMode"><option value="manual" ${state.session.inputMode === "manual" ? "selected" : ""}>${tr("labels.manual_entry")}</option><option value="ai" ${state.session.inputMode === "ai" ? "selected" : ""}>${tr("labels.ai_assist")}</option></select></label>
-      <button id="addMed">${tr("buttons.add")}</button>
       <button id="saveSnapshot">${tr("buttons.save")}</button><select id="snapshotSelect"><option value="">${tr("labels.load_session")}</option>${listSnapshots().map((s) => `<option value="${s.id}">${esc(s.label)}</option>`).join("")}</select>
       <button id="exportJson">${tr("buttons.export_json")}</button><button id="exportCsv">${tr("buttons.export_csv")}</button><button id="print">${tr("buttons.print_report")}</button><label class="import-btn">${tr("buttons.import")}<input type="file" id="importFile" accept="application/json"></label>
     </div>
     ${state.session.inputMode === "ai" ? `<p class="note">${tr("labels.reviewed_required")}</p><div class="split-view"><div><h3>${tr("labels.free_text")}</h3><textarea id="freeText" rows="12" placeholder="...">${esc(state.session.rawInputText || "")}</textarea><button id="parseText">${tr("buttons.parse")}</button></div><div><h3>${tr("labels.extraction_preview")}</h3>${parseReviewPane()}</div></div>` : `<p>${tr("labels.manual_workflow_active")}</p>`}
-    ${cimaSearchPanel()}
-    <table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.strength")}</th><th title="${tr("tooltips.dosage_form")}">${tr("results.dosage_form")}</th><th>${tr("results.route")}</th><th title="${tr("tooltips.frequency")}">${tr("results.frequency")}</th><th>${tr("results.prn")}</th><th title="${tr("tooltips.instructions")}">${tr("results.additional_instructions")}</th><th>${tr("results.notes")}</th><th>CN</th><th>${tr("labels.reg_short")}</th><th>${tr("results.validated")}</th><th>${tr("labels.row_actions")}</th></tr></thead><tbody>${state.session.medications.map((m, i) => medRow(m, i, validationMap)).join("")}</tbody></table></section>
+    <div class="entry-layout">${cimaSearchPanel()}${medicationEntryForm(validationMap)}${regimenPanel()}</div></section>
 
   <section class="${sectionVisible("validation")}"><h2>${tr("nav.validation")}</h2>${state.validation.length ? `<ul class='issues'>${state.validation.map((i) => `<li>${i.msg} (#${i.idx + 1})</li>`).join("")}</ul>` : `<p class='ok'>${tr("labels.no_validation_issues")}</p>`}
   ${blockingAiReview ? `<p class='issues'>${tr("labels.ai_review_blocking")}</p>` : ""}
@@ -238,13 +320,15 @@ function render() {
   <section class="${sectionVisible("report")}"><h2>${tr("nav.report")}</h2><p>${tr("labels.report_ready_hint")}</p><div class="toolbar"><button id="reportPrintBtn">${tr("buttons.print_report")}</button><button id="reportDownloadBtn">${tr("buttons.download_report")}</button></div><section id="printable" class="printable">${reportHtml(state.session, state.scored, state.session.language, tr)}</section></section>
   ${state.showHelp ? `<dialog open class="help-dialog"><h3>${tr("nav.help")}</h3><p>${tr("labels.help_body")}</p><button id="closeHelp">OK</button></dialog>` : ""}`;
 
-  document.querySelectorAll("select[data-field='additionalInstructionsMulti']").forEach((el) => {
-    const idx = Number(el.dataset.idx);
-    const selected = new Set(splitInstructions(state.session.medications[idx].additionalInstructions));
+  document.querySelectorAll("select[data-entry-field='additionalInstructionsMulti']").forEach((el) => {
+    const selected = new Set(splitInstructions(state.entryMedication.additionalInstructions));
     Array.from(el.options).forEach((opt) => {
       opt.selected = selected.has(opt.value);
     });
   });
+  document.querySelectorAll("[data-entry-field='dosageForm']").forEach((el) => { el.value = state.entryMedication.dosageForm || ""; });
+  document.querySelectorAll("[data-entry-field='frequency']").forEach((el) => { el.value = state.entryMedication.frequency || ""; });
+  document.querySelectorAll("[data-entry-field='route']").forEach((el) => { el.value = state.entryMedication.route || ""; });
 
   wireEvents();
 }
@@ -278,7 +362,12 @@ const cimaSearchRunner = createDebouncedSearch({
   minLength: state.cima.minQueryLength,
   waitMs: 300,
   searchFn: async (query) => {
-    const apiResults = await searchMedications(query, { type: state.cima.type });
+    const apiResults = state.cima.type === "smart"
+      ? [
+        ...(await searchMedications(query, { type: "name" })),
+        ...(await searchMedications(query, { type: "ingredient" }))
+      ].filter((item, idx, arr) => arr.findIndex((other) => other.id === item.id) === idx)
+      : await searchMedications(query, { type: state.cima.type });
     const enriched = await Promise.all(
       apiResults.slice(0, 24).map(async (item) => {
         const presentations = await getPresentationDetail({ registrationNumber: item.registrationNumber });
@@ -315,13 +404,8 @@ async function importCimaResult(resultIdx) {
     const cimaData = buildMedicationFromCima(medicationDetail, { ...presentation, supplyIssue: Boolean(supply?.length) }, notes);
     cimaData.cimaProductUrl = `https://cima.aemps.es/cima/publico/detalle.html?nregistro=${encodeURIComponent(cimaData.cimaRegistrationNumber || selected.registrationNumber)}`;
 
-    const applyRow = Number(document.querySelector("#cimaApplyRow")?.value ?? state.cima.selectedIdx);
-    if (applyRow >= 0 && state.session.medications[applyRow]) {
-      state.session.medications[applyRow] = applyCimaSelectionToMedication(state.session.medications[applyRow], cimaData);
-    } else {
-      const created = applyCimaSelectionToMedication(defaultMedication(), cimaData);
-      state.session.medications.push(created);
-    }
+    state.entryMedication = applyCimaSelectionToMedication({ ...state.entryMedication }, cimaData);
+    state.editingMedicationIdx = null;
     state.scored = null;
     state.cima.selectedResultId = selected.id || "";
     persist();
@@ -337,8 +421,6 @@ function wireEvents() {
   if (cimaSearchType) cimaSearchType.onchange = (e) => { state.cima.type = e.target.value; cimaSearchRunner.run(state.cima.query); };
   const cimaQuery = document.querySelector("#cimaQuery");
   if (cimaQuery) cimaQuery.oninput = (e) => { state.cima.query = e.target.value; cimaSearchRunner.run(state.cima.query); };
-  const cimaApplyRow = document.querySelector("#cimaApplyRow");
-  if (cimaApplyRow) cimaApplyRow.onchange = (e) => { state.cima.selectedIdx = Number(e.target.value) || 0; };
   document.querySelectorAll("[data-action='select-cima-result']").forEach((el) => {
     el.onclick = async (e) => {
       const idx = Number(e.currentTarget.dataset.resultIdx);
@@ -357,7 +439,20 @@ function wireEvents() {
     if (state.session.inputMode === "manual") state.parseUi.confirmed = false;
     persist();
   };
-  document.querySelector("#addMed").onclick = () => { state.session.medications.push(defaultMedication()); persist(); };
+  const addMedicationBtn = document.querySelector("#addMedicationBtn");
+  if (addMedicationBtn) {
+    addMedicationBtn.onclick = () => {
+      const nextMed = { ...state.entryMedication, id: state.entryMedication.id || crypto.randomUUID(), dosageFormRoute: state.entryMedication.dosageForm || "" };
+      if (state.editingMedicationIdx === null) state.session.medications = appendMedication(state.session.medications, nextMed);
+      else state.session.medications[state.editingMedicationIdx] = nextMed;
+      state.entryMedication = defaultMedication();
+      state.editingMedicationIdx = null;
+      state.scored = null;
+      persist();
+    };
+  }
+  const cancelEditMedication = document.querySelector("#cancelEditMedication");
+  if (cancelEditMedication) cancelEditMedication.onclick = () => { state.editingMedicationIdx = null; state.entryMedication = defaultMedication(); render(); };
 
   const parseBtn = document.querySelector("#parseText");
   if (parseBtn) {
@@ -408,22 +503,40 @@ function wireEvents() {
   if (reportDownloadBtn) reportDownloadBtn.onclick = () => window.print();
   document.querySelector("#importFile").onchange = async (e) => { const file = e.target.files[0]; if (file) { state.session = importFromJson(await file.text()); state.scored = null; persist(); } };
 
-  document.querySelectorAll("[data-field]").forEach((el) => {
+  document.querySelectorAll("[data-entry-field]").forEach((el) => {
     el.onchange = (e) => {
-      const idx = Number(e.target.dataset.idx);
-      const field = e.target.dataset.field;
-      state.session.medications[idx][field === "additionalInstructionsMulti" ? "additionalInstructions" : field] =
+      const field = e.target.dataset.entryField;
+      state.entryMedication[field === "additionalInstructionsMulti" ? "additionalInstructions" : field] =
         field === "additionalInstructionsMulti" ? Array.from(e.target.selectedOptions).map((opt) => opt.value).join("; ") : e.target.type === "checkbox" ? e.target.checked : e.target.value;
-      state.session.medications[idx].dosageFormRoute = state.session.medications[idx].dosageForm || "";
-      state.session.medications[idx].manuallyCorrected = true;
-      state.session.manualCorrectionsLog.push({ at: new Date().toISOString(), action: "field-edited", medicationId: state.session.medications[idx].id, field });
+      state.entryMedication.dosageFormRoute = state.entryMedication.dosageForm || "";
+      state.entryMedication.manuallyCorrected = true;
       state.scored = null;
       persist();
     };
   });
 
-  document.querySelectorAll("button[data-action='delete-med']").forEach((el) => el.onclick = (e) => { state.session.medications.splice(Number(e.target.dataset.idx), 1); state.scored = null; persist(); });
-  document.querySelectorAll("button[data-action='duplicate-med']").forEach((el) => el.onclick = (e) => { const idx = Number(e.target.dataset.idx); const med = state.session.medications[idx]; state.session.medications.splice(idx + 1, 0, { ...med, id: crypto.randomUUID(), validated: false }); state.scored = null; persist(); });
+  document.querySelectorAll("button[data-action='edit-med']").forEach((el) => el.onclick = (e) => {
+    const idx = Number(e.target.dataset.idx);
+    state.entryMedication = { ...state.session.medications[idx] };
+    state.editingMedicationIdx = idx;
+    render();
+  });
+  document.querySelectorAll("button[data-action='delete-med']").forEach((el) => el.onclick = (e) => { state.session.medications = removeMedicationAt(state.session.medications, Number(e.target.dataset.idx)); state.scored = null; persist(); });
+  document.querySelectorAll("button[data-action='duplicate-med']").forEach((el) => el.onclick = (e) => { state.session.medications = duplicateMedicationAt(state.session.medications, Number(e.target.dataset.idx)); state.scored = null; persist(); });
+  document.querySelectorAll("button[data-action='move-up-med']").forEach((el) => el.onclick = (e) => {
+    const idx = Number(e.target.dataset.idx);
+    if (idx <= 0) return;
+    const [item] = state.session.medications.splice(idx, 1);
+    state.session.medications.splice(idx - 1, 0, item);
+    persist();
+  });
+  document.querySelectorAll("button[data-action='move-down-med']").forEach((el) => el.onclick = (e) => {
+    const idx = Number(e.target.dataset.idx);
+    if (idx >= state.session.medications.length - 1) return;
+    const [item] = state.session.medications.splice(idx, 1);
+    state.session.medications.splice(idx + 1, 0, item);
+    persist();
+  });
   document.querySelector("#runCalc").onclick = () => {
     state.validation = validateMedications();
     const blockingAiReview = state.session.inputMode === "ai" && state.session.lastParseResult && !state.parseUi.confirmed;
