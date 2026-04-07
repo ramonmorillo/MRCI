@@ -5,6 +5,8 @@ export function exportJson(session) {
 export function exportCsv(medications) {
   const headers = [
     "drugName",
+    "dosageForm",
+    "route",
     "dosageFormRoute",
     "frequency",
     "prn",

@@ -1,14 +1,22 @@
 import { mrciClassic } from "./engines/mrciClassic.js";
 import { aMrci } from "./engines/aMrci.js";
 
-export function scoreAll(medications, mappings) {
+export const scoringEngines = [
+  { id: "classic", label: "MRCI Classic", run: mrciClassic },
+  { id: "abbreviated", label: "A-MRCI", run: aMrci }
+];
+
+export function scoreAll(medications, mappings, engines = scoringEngines) {
   const eligible = medications.filter((m) => m.validated);
-  const classic = mrciClassic(eligible, mappings);
-  const abbreviated = aMrci(eligible, mappings);
+  const byEngine = Object.fromEntries(
+    engines.map((engine) => [engine.id, engine.run(eligible, mappings)])
+  );
+
   return {
     eligibleCount: eligible.length,
-    classic,
-    abbreviated,
-    delta: Number((classic.total - abbreviated.total).toFixed(2))
+    byEngine,
+    classic: byEngine.classic,
+    abbreviated: byEngine.abbreviated,
+    delta: Number(((byEngine.classic?.total ?? 0) - (byEngine.abbreviated?.total ?? 0)).toFixed(2))
   };
 }

@@ -1,6 +1,8 @@
 export const defaultMedication = () => ({
   id: crypto.randomUUID(),
   drugName: "",
+  dosageForm: "",
+  route: "",
   dosageFormRoute: "",
   frequency: "",
   prn: false,
