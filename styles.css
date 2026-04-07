@@ -140,3 +140,21 @@ pre {
 .tab-btn.active {
   background: #0f3d99;
 }
+
+.split-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin: 0.75rem 0;
+}
+
+.uncertain {
+  border: 2px dashed #f79009;
+  background: #fffaeb;
+}
+
+@media (max-width: 900px) {
+  .split-view {
+    grid-template-columns: 1fr;
+  }
+}

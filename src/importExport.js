@@ -1,23 +1,43 @@
 export function exportJson(session, scored = null) {
-  return JSON.stringify({
-    ...session,
-    exportMeta: {
-      scoringMode: session.scoringMode || "compare",
-      generatedAt: new Date().toISOString()
+  return JSON.stringify(
+    {
+      ...session,
+      exportMeta: {
+        scoringMode: session.scoringMode || "compare",
+        generatedAt: new Date().toISOString()
+      },
+      parsingAuditTrail: {
+        inputMode: session.inputMode,
+        rawInputText: session.rawInputText || "",
+        extractedStructuredData: session.lastParseResult?.candidates || [],
+        confidenceFlags: (session.lastParseResult?.candidates || []).map((candidate) => ({
+          candidateId: candidate.candidateId,
+          lowConfidenceFields: candidate.lowConfidenceFields,
+          flags: candidate.flags
+        })),
+        manualCorrections: session.manualCorrectionsLog || [],
+        finalValidatedRegimen: (session.lastValidatedRegimen || session.medications || []).filter((med) => med.validated)
+      },
+      scores: scored
     },
-    scores: scored
-  }, null, 2);
+    null,
+    2
+  );
 }
 
-export function exportCsv(medications, scored = null, mode = "compare") {
+export function exportCsv(medications, scored = null, mode = "compare", session = {}) {
   const headers = [
     "drugName",
+    "strength",
     "dosageForm",
     "route",
     "dosageFormRoute",
     "frequency",
     "prn",
     "additionalInstructions",
+    "sourceEvidence",
+    "extractionFlags",
+    "manuallyCorrected",
     "validated",
     "mrciTotal",
     "aMrciTotal",
@@ -36,14 +56,33 @@ export function exportCsv(medications, scored = null, mode = "compare") {
     return headers
       .map((h) => {
         const value =
-          h === "mrciTotal" ? c.mrci ?? "" :
-          h === "aMrciTotal" ? c.aMrci ?? "" :
-          h === "difference" ? c.difference ?? "" :
-          h === "mappingWarnings" ? (warningsByMed[m.id] || []).join(" | ") :
-          h === "dosageFormRoute" ? (m.dosageForm || m.dosageFormRoute || "") :
-          h === "validated" ? (m.validated ? "true" : "false") :
-          h === "prn" ? (m.prn ? "true" : "false") :
-          h === "scoringMode" ? mode : (m[h] ?? "");
+          h === "mrciTotal"
+            ? c.mrci ?? ""
+            : h === "aMrciTotal"
+              ? c.aMrci ?? ""
+              : h === "difference"
+                ? c.difference ?? ""
+                : h === "mappingWarnings"
+                  ? (warningsByMed[m.id] || []).join(" | ")
+                  : h === "dosageFormRoute"
+                    ? m.dosageForm || m.dosageFormRoute || ""
+                    : h === "validated"
+                      ? m.validated
+                        ? "true"
+                        : "false"
+                      : h === "prn"
+                        ? m.prn
+                          ? "true"
+                          : "false"
+                        : h === "manuallyCorrected"
+                          ? m.manuallyCorrected
+                            ? "true"
+                            : "false"
+                          : h === "extractionFlags"
+                            ? (m.extractionFlags || []).join("|")
+                            : h === "scoringMode"
+                              ? mode
+                              : m[h] ?? "";
         return `"${String(value).replaceAll('"', '""')}"`;
       })
       .join(",");
@@ -52,6 +91,7 @@ export function exportCsv(medications, scored = null, mode = "compare") {
   const summaryRows = scored
     ? [
         `"scoringMode","${mode}"`,
+        `"inputMode","${session.inputMode || "manual"}"`,
         `"mrciTotal","${scored.classic?.total ?? ""}"`,
         `"aMrciTotal","${scored.amrci?.total ?? ""}"`,
         `"absoluteDifference","${scored.delta ?? ""}"`
