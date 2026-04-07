@@ -1,6 +1,7 @@
 export const defaultMedication = () => ({
   id: crypto.randomUUID(),
   drugName: "",
+  strength: "",
   dosageForm: "",
   route: "",
   dosageFormRoute: "",
@@ -9,7 +10,11 @@ export const defaultMedication = () => ({
   additionalInstructions: "",
   notes: "",
   source: "manual",
-  validated: false
+  sourceEvidence: "",
+  confidence: {},
+  extractionFlags: [],
+  validated: false,
+  manuallyCorrected: false
 });
 
 export const defaultSession = () => ({
@@ -20,6 +25,11 @@ export const defaultSession = () => ({
   patientLabel: "",
   regimenLabel: "",
   scoringMode: "compare",
+  inputMode: "manual",
+  rawInputText: "",
+  lastParseResult: null,
+  lastValidatedRegimen: null,
+  manualCorrectionsLog: [],
   aMrciCorrections: {},
   medications: []
 });
