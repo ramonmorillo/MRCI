@@ -1,32 +1,25 @@
-export const i18n = {
-  en: {
-    appTitle: "Medication Regimen Complexity Calculator",
-    disclaimer:
-      "Support tool only. Not a medical device and does not replace clinical judgment.",
-    manual: "Manual Entry",
-    aiAssist: "AI-Assisted Parse",
-    validateNote: "All AI-parsed medications must be manually validated before scoring.",
-    scoring: "Scoring",
-    comparison: "Comparison",
-    print: "Print",
-    exportJson: "Export JSON",
-    exportCsv: "Export CSV",
-    importData: "Import"
-  },
-  es: {
-    appTitle: "Calculadora de Complejidad del Régimen de Medicación",
-    disclaimer:
-      "Herramienta de apoyo. No es un dispositivo médico y no reemplaza el juicio clínico.",
-    manual: "Entrada Manual",
-    aiAssist: "Análisis Asistido por IA",
-    validateNote: "Todo medicamento analizado por IA debe validarse manualmente antes del cálculo.",
-    scoring: "Puntuación",
-    comparison: "Comparación",
-    print: "Imprimir",
-    exportJson: "Exportar JSON",
-    exportCsv: "Exportar CSV",
-    importData: "Importar"
-  }
-};
+import { en } from "./i18n/en.js";
+import { es } from "./i18n/es.js";
 
-export const t = (lang, key) => i18n[lang]?.[key] ?? i18n.en[key] ?? key;
+const messages = { en, es };
+const missingKeys = new Set();
+
+function resolveKey(obj, keyPath) {
+  return keyPath.split(".").reduce((acc, part) => (acc && part in acc ? acc[part] : undefined), obj);
+}
+
+export function t(lang = "en", key, vars = {}) {
+  const chosen = messages[lang] || messages.en;
+  let value = resolveKey(chosen, key);
+  if (value === undefined) {
+    value = resolveKey(messages.en, key);
+    const marker = `${lang}:${key}`;
+    if (!missingKeys.has(marker)) {
+      missingKeys.add(marker);
+      console.warn(`[i18n] Missing translation for '${key}' in '${lang}', fallback to English.`);
+    }
+  }
+  if (value === undefined) return key;
+  if (typeof value !== "string") return value;
+  return Object.entries(vars).reduce((out, [k, v]) => out.replaceAll(`{${k}}`, String(v)), value);
+}
