@@ -6,6 +6,8 @@ import { exportCsv, exportJson, importFromJson } from "./importExport.js";
 import { reportHtml } from "./report.js";
 import { t } from "./i18n.js";
 import { parseMedicationText } from "./lib/parsing/textParser.js";
+import { searchMedications, getMedicationDetail, getPresentationDetail, getSafetyNotes, getSupplyIssues } from "./lib/integrations/cimaApi.js";
+import { buildMedicationFromCima, applyCimaSelectionToMedication } from "./lib/integrations/cimaMedicationMapper.js";
 
 const ROUTE_OPTIONS = ["oral", "inhaled", "subcutaneous", "intravenous", "topical", "ophthalmic", "otic", "other"];
 const RESULTS_TABS = ["summary", "by-medication", "by-section", "warnings"];
@@ -19,7 +21,15 @@ const state = {
   resultsTab: "summary",
   activeStep: "input",
   parseUi: { confirmed: false },
-  showHelp: false
+  showHelp: false,
+  cima: {
+    query: "",
+    type: "name",
+    loading: false,
+    error: "",
+    results: [],
+    selectedIdx: 0
+  }
 };
 
 const root = document.querySelector("#app");
@@ -99,9 +109,13 @@ function medRow(med, idx, validationMap) {
 <td><input type="checkbox" data-field="prn" data-idx="${idx}" ${med.prn ? "checked" : ""}></td>
 <td><select title="${tr("tooltips.instructions")}" multiple data-field="additionalInstructionsMulti" data-idx="${idx}">${directionOptions}</select><small>${tr("labels.ctrl_multi")}</small></td>
 <td><input data-field="notes" data-idx="${idx}" value="${esc(med.notes)}"></td>
+<td><input data-field="cimaNationalCode" data-idx="${idx}" value="${esc(med.cimaNationalCode || "")}" placeholder="847123"></td>
+<td><input data-field="cimaRegistrationNumber" data-idx="${idx}" value="${esc(med.cimaRegistrationNumber || "")}" placeholder="51347"></td>
 <td><input type="checkbox" data-field="validated" data-idx="${idx}" ${med.validated ? "checked" : ""}></td>
 <td class="actions"><button data-action="duplicate-med" data-idx="${idx}">${tr("buttons.duplicate")}</button><button class="ghost" data-action="delete-med" data-idx="${idx}">${tr("buttons.delete")}</button></td>
-</tr><tr class="hint-row"><td colspan="10">${tr("labels.evidence")}: ${esc(med.sourceEvidence || tr("labels.manual_entry"))} | ${tr("labels.selected_directions")}: ${esc(selectedDirections.join("; ") || tr("labels.none"))} ${med.extractionFlags?.length ? `| ${tr("parsing.flags")}: ${esc(med.extractionFlags.map(translateDynamicText).join(", "))}` : ""}</td></tr>`;
+</tr><tr class="hint-row"><td colspan="12">${tr("labels.evidence")}: ${esc(med.sourceEvidence || tr("labels.manual_entry"))} | ${tr("labels.selected_directions")}: ${esc(selectedDirections.join("; ") || tr("labels.none"))} ${med.extractionFlags?.length ? `| ${tr("parsing.flags")}: ${esc(med.extractionFlags.map(translateDynamicText).join(", "))}` : ""}
+<details><summary>${tr("labels.cima_info")}</summary><div>${tr("labels.presentation")}: <input data-field="cimaPresentation" data-idx="${idx}" value="${esc(med.cimaPresentation || "")}"></div><div>${tr("labels.active_ingredients")}: <input data-field="cimaActiveIngredients" data-idx="${idx}" value="${esc(med.cimaActiveIngredients || "")}"></div><div>${tr("results.strength")}: <input data-field="cimaDose" data-idx="${idx}" value="${esc(med.cimaDose || "")}"></div><div>${tr("labels.supply_issue")}: ${med.cimaSupplyIssue ? tr("labels.yes") : tr("labels.no")}</div>${med.cimaProductUrl ? `<div><a href="${esc(med.cimaProductUrl)}" target="_blank" rel="noreferrer">${tr("labels.official_info_link")}</a></div>` : ""}${(med.cimaSafetyNotes || []).length ? `<ul>${med.cimaSafetyNotes.slice(0, 3).map((n) => `<li>${esc(n.asunto || n.ref || n.num || "")}</li>`).join("")}</ul>` : `<div>${tr("labels.no_safety_notes")}</div>`}</details>
+</td></tr>`;
 }
 
 function parseReviewPane() {
@@ -111,6 +125,40 @@ function parseReviewPane() {
   return `<p><strong>${tr("labels.parser")}:</strong> ${parseResult.parserVersion} | ${tr("labels.total_candidates")}: ${parseResult.summary.totalCandidates}</p>
   <table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.frequency")}</th><th>${tr("parsing.low_confidence_fields")}</th><th>${tr("parsing.flags")}</th><th>${tr("parsing.source_text")}</th></tr></thead><tbody>${rows}</tbody></table>
   <div class="toolbar"><button id="addParsedRows">${tr("buttons.add_parsed")}</button><button id="confirmReviewed" ${state.parseUi.confirmed ? "disabled" : ""}>${tr("buttons.confirm_review")}</button></div>`;
+}
+
+function cimaSearchPanel() {
+  const rowOptions = state.session.medications.map((med, idx) => `<option value="${idx}" ${idx === state.cima.selectedIdx ? "selected" : ""}>#${idx + 1} ${esc(med.drugName || tr("labels.new_medication"))}</option>`).join("");
+  const results = state.cima.results.map((item, idx) => `<button class="cima-result ${idx === 0 ? "active" : ""}" data-action="select-cima-result" data-result-idx="${idx}">
+    <strong>${esc(item.name || tr("labels.missing"))}</strong>
+    <small>${tr("labels.form_short")}: ${esc(item.form || tr("labels.missing"))} | ${tr("results.route")}: ${esc(item.route || tr("labels.missing"))} | CN: ${esc(item.nationalCode || "—")} | ${tr("labels.reg_short")}: ${esc(item.registrationNumber || "—")}</small>
+  </button>`).join("");
+
+  return `<section class="cima-panel">
+    <h3>${tr("labels.cima_lookup")}</h3>
+    <p class="note">${tr("labels.cima_warning")}</p>
+    <div class="toolbar cima-toolbar">
+      <label>${tr("labels.cima_search_type")}
+        <select id="cimaSearchType">
+          <option value="name" ${state.cima.type === "name" ? "selected" : ""}>${tr("labels.search_brand")}</option>
+          <option value="ingredient" ${state.cima.type === "ingredient" ? "selected" : ""}>${tr("labels.search_ingredient")}</option>
+          <option value="nationalCode" ${state.cima.type === "nationalCode" ? "selected" : ""}>${tr("labels.search_cn")}</option>
+          <option value="registration" ${state.cima.type === "registration" ? "selected" : ""}>${tr("labels.search_registration")}</option>
+        </select>
+      </label>
+      <label>${tr("labels.search")}
+        <input id="cimaQuery" value="${esc(state.cima.query)}" placeholder="${tr("labels.cima_placeholder")}">
+      </label>
+      <button id="cimaSearchBtn">${tr("buttons.search_cima")}</button>
+      <label>${tr("labels.apply_to_row")}
+        <select id="cimaApplyRow">${rowOptions}<option value="-1">+ ${tr("buttons.add")}</option></select>
+      </label>
+    </div>
+    ${state.cima.loading ? `<p>${tr("labels.loading")}</p>` : ""}
+    ${state.cima.error ? `<p class="issues">${esc(state.cima.error)}</p>` : ""}
+    ${!state.cima.loading && !state.cima.error && state.cima.query && !state.cima.results.length ? `<p>${tr("labels.no_cima_results")}</p>` : ""}
+    <div class="cima-results">${results}</div>
+  </section>`;
 }
 
 function comparisonBars(scores) {
@@ -173,7 +221,8 @@ function render() {
       <button id="exportJson">${tr("buttons.export_json")}</button><button id="exportCsv">${tr("buttons.export_csv")}</button><button id="print">${tr("buttons.print")}</button><label class="import-btn">${tr("buttons.import")}<input type="file" id="importFile" accept="application/json"></label>
     </div>
     ${state.session.inputMode === "ai" ? `<p class="note">${tr("labels.reviewed_required")}</p><div class="split-view"><div><h3>${tr("labels.free_text")}</h3><textarea id="freeText" rows="12" placeholder="...">${esc(state.session.rawInputText || "")}</textarea><button id="parseText">${tr("buttons.parse")}</button></div><div><h3>${tr("labels.extraction_preview")}</h3>${parseReviewPane()}</div></div>` : `<p>${tr("labels.manual_workflow_active")}</p>`}
-    <table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.strength")}</th><th title="${tr("tooltips.dosage_form")}">${tr("results.dosage_form")}</th><th>${tr("results.route")}</th><th title="${tr("tooltips.frequency")}">${tr("results.frequency")}</th><th>${tr("results.prn")}</th><th title="${tr("tooltips.instructions")}">${tr("results.additional_instructions")}</th><th>${tr("results.notes")}</th><th>${tr("results.validated")}</th><th>${tr("labels.row_actions")}</th></tr></thead><tbody>${state.session.medications.map((m, i) => medRow(m, i, validationMap)).join("")}</tbody></table></section>
+    ${cimaSearchPanel()}
+    <table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.strength")}</th><th title="${tr("tooltips.dosage_form")}">${tr("results.dosage_form")}</th><th>${tr("results.route")}</th><th title="${tr("tooltips.frequency")}">${tr("results.frequency")}</th><th>${tr("results.prn")}</th><th title="${tr("tooltips.instructions")}">${tr("results.additional_instructions")}</th><th>${tr("results.notes")}</th><th>CN</th><th>${tr("labels.reg_short")}</th><th>${tr("results.validated")}</th><th>${tr("labels.row_actions")}</th></tr></thead><tbody>${state.session.medications.map((m, i) => medRow(m, i, validationMap)).join("")}</tbody></table></section>
 
   <section class="${sectionVisible("validation")}"><h2>${tr("nav.validation")}</h2>${state.validation.length ? `<ul class='issues'>${state.validation.map((i) => `<li>${i.msg} (#${i.idx + 1})</li>`).join("")}</ul>` : `<p class='ok'>${tr("labels.no_validation_issues")}</p>`}
   ${blockingAiReview ? `<p class='issues'>${tr("labels.ai_review_blocking")}</p>` : ""}
@@ -220,7 +269,71 @@ function parsedToMedication(candidate) {
   };
 }
 
+async function runCimaSearch() {
+  state.cima.loading = true;
+  state.cima.error = "";
+  state.cima.results = [];
+  render();
+  try {
+    const results = await searchMedications(state.cima.query, { type: state.cima.type });
+    const enriched = await Promise.all(results.slice(0, 12).map(async (item) => {
+      const presentations = await getPresentationDetail({ registrationNumber: item.registrationNumber });
+      return { ...item, nationalCode: presentations[0]?.nationalCode || "" };
+    }));
+    state.cima.results = enriched;
+  } catch (error) {
+    state.cima.error = tr("errors.cima_failed");
+    console.error(error);
+  } finally {
+    state.cima.loading = false;
+    render();
+  }
+}
+
+async function importCimaResult(resultIdx) {
+  const selected = state.cima.results[resultIdx];
+  if (!selected) return;
+  try {
+    const medicationDetail = await getMedicationDetail({ registrationNumber: selected.registrationNumber, nationalCode: selected.nationalCode });
+    const presentations = await getPresentationDetail({ registrationNumber: selected.registrationNumber, nationalCode: selected.nationalCode });
+    const presentation = presentations[0] || {};
+    const notes = await getSafetyNotes(selected.registrationNumber);
+    const supply = selected.nationalCode ? await getSupplyIssues(selected.nationalCode) : [];
+    const cimaData = buildMedicationFromCima(medicationDetail, { ...presentation, supplyIssue: Boolean(supply?.length) }, notes);
+    cimaData.cimaProductUrl = `https://cima.aemps.es/cima/publico/detalle.html?nregistro=${encodeURIComponent(cimaData.cimaRegistrationNumber || selected.registrationNumber)}`;
+
+    const applyRow = Number(document.querySelector("#cimaApplyRow")?.value ?? state.cima.selectedIdx);
+    if (applyRow >= 0 && state.session.medications[applyRow]) {
+      state.session.medications[applyRow] = applyCimaSelectionToMedication(state.session.medications[applyRow], cimaData);
+    } else {
+      const created = applyCimaSelectionToMedication(defaultMedication(), cimaData);
+      state.session.medications.push(created);
+    }
+    state.scored = null;
+    persist();
+  } catch (error) {
+    state.cima.error = tr("errors.cima_failed");
+    console.error(error);
+    render();
+  }
+}
+
 function wireEvents() {
+  const cimaSearchType = document.querySelector("#cimaSearchType");
+  if (cimaSearchType) cimaSearchType.onchange = (e) => { state.cima.type = e.target.value; };
+  const cimaQuery = document.querySelector("#cimaQuery");
+  if (cimaQuery) cimaQuery.oninput = (e) => { state.cima.query = e.target.value; };
+  const cimaApplyRow = document.querySelector("#cimaApplyRow");
+  if (cimaApplyRow) cimaApplyRow.onchange = (e) => { state.cima.selectedIdx = Number(e.target.value) || 0; };
+  const cimaSearchBtn = document.querySelector("#cimaSearchBtn");
+  if (cimaSearchBtn) cimaSearchBtn.onclick = () => runCimaSearch();
+  document.querySelectorAll("[data-action='select-cima-result']").forEach((el) => {
+    el.onclick = async (e) => {
+      const idx = Number(e.currentTarget.dataset.resultIdx);
+      await importCimaResult(idx);
+    };
+  });
+
   document.querySelector("#langSelect").onchange = (e) => { state.session.language = e.target.value; persist(); };
   document.querySelector("#toggleHelp").onclick = () => { state.showHelp = true; render(); };
   const closeHelp = document.querySelector("#closeHelp");

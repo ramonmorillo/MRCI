@@ -14,7 +14,14 @@ export const defaultMedication = () => ({
   confidence: {},
   extractionFlags: [],
   validated: false,
-  manuallyCorrected: false
+  manuallyCorrected: false,
+  cimaPresentation: "",
+  cimaNationalCode: "",
+  cimaRegistrationNumber: "",
+  cimaActiveIngredients: "",
+  cimaDose: "",
+  cimaSupplyIssue: false,
+  cimaSafetyNotes: []
 });
 
 export const defaultSession = () => ({
