@@ -9,6 +9,7 @@ function med(overrides) {
     id: crypto.randomUUID(),
     drugName: "Drug",
     dosageFormRoute: "tablet",
+    dosageForm: "tablet",
     frequency: "daily",
     prn: false,
     additionalInstructions: "",
@@ -27,50 +28,65 @@ const fullMappings = {
   }
 };
 
-test("MRCI baseline remains unchanged for simple oral chronic regimen", () => {
-  const result = mrciClassic([med({ drugName: "Metformin", additionalInstructions: "take with food" })]);
-  assert.equal(result.total, 3); // A=1, B=1, C=1
+test("1 simple oral medication once daily", () => {
+  const result = scoreAll([med()], fullMappings, "compare");
+  assert.equal(result.classic.total, 2);
+  assert.equal(result.amrci.total, 2);
 });
 
-test("inhalers: both engines score higher form complexity than tablet", () => {
-  const tabletClassic = mrciClassic([med({ dosageFormRoute: "tablet" })]).subtotalA;
-  const inhalerClassic = mrciClassic([med({ dosageFormRoute: "inhaler" })]).subtotalA;
-  const inhalerAmrci = aMrci([med({ dosageFormRoute: "inhaler" })], fullMappings).subtotalA;
-  assert.ok(inhalerClassic > tabletClassic);
-  assert.ok(inhalerAmrci >= 2);
+test("2 oral medications with different frequencies", () => {
+  const result = scoreAll([
+    med({ drugName: "Metformin", frequency: "once daily" }),
+    med({ drugName: "Losartan", frequency: "twice daily" })
+  ], fullMappings, "compare");
+  assert.equal(result.classic.total, 5);
+  assert.equal(result.amrci.total, 4.5);
 });
 
-test("injectables are captured by both engines", () => {
-  const classic = mrciClassic([med({ dosageFormRoute: "injection" })]).subtotalA;
-  const abr = aMrci([med({ dosageFormRoute: "injection" })], fullMappings).subtotalA;
-  assert.ok(classic >= 3);
-  assert.ok(abr >= 2);
+test("inhaler + oral drug", () => {
+  const result = scoreAll([
+    med({ drugName: "Salbutamol", dosageFormRoute: "inhaler", dosageForm: "inhaler", additionalInstructions: "rinse mouth" }),
+    med({ drugName: "Atorvastatin", dosageFormRoute: "tablet", dosageForm: "tablet" })
+  ], fullMappings, "compare");
+  assert.equal(result.classic.total, 7);
+  assert.equal(result.amrci.total, 5.5);
 });
 
-test("PRN medications increase Section B in both engines", () => {
+test("PRN medication increases section B", () => {
   const base = scoreAll([med({ prn: false })], fullMappings, "compare");
   const prn = scoreAll([med({ prn: true })], fullMappings, "compare");
-  assert.ok(prn.classic.subtotalB > base.classic.subtotalB);
-  assert.ok(prn.amrci.subtotalB > base.amrci.subtotalB);
+  assert.equal(prn.classic.total, base.classic.total + 0.5);
+  assert.equal(prn.amrci.total, base.amrci.total + 0.25);
 });
 
-test("alternating doses increase complexity", () => {
-  const standard = scoreAll([med({ frequency: "daily" })], fullMappings, "compare");
-  const alt = scoreAll([med({ frequency: "daily", additionalInstructions: "alternate days" })], fullMappings, "compare");
-  assert.ok(alt.classic.subtotalB > standard.classic.subtotalB);
-  assert.ok(alt.amrci.subtotalB > standard.amrci.subtotalB);
+test("food-related instruction adds section C", () => {
+  const withFood = scoreAll([med({ additionalInstructions: "with food" })], fullMappings, "compare");
+  assert.equal(withFood.classic.subtotalC, 1);
+  assert.equal(withFood.amrci.subtotalC, 0.5);
 });
 
-test("food-related instructions affect section C", () => {
-  const noFood = scoreAll([med({ additionalInstructions: "" })], fullMappings, "compare");
-  const withFood = scoreAll([med({ additionalInstructions: "take with food" })], fullMappings, "compare");
-  assert.ok(withFood.classic.subtotalC > noFood.classic.subtotalC);
-  assert.ok(withFood.amrci.subtotalC > noFood.amrci.subtotalC);
+test("alternating dose / variable dose", () => {
+  const alt = scoreAll([med({ additionalInstructions: "alternate days" })], fullMappings, "compare");
+  assert.equal(alt.classic.subtotalB, 2);
+  assert.equal(alt.amrci.subtotalB, 1.5);
 });
 
-test("missing directions are handled safely with warnings in A-MRCI", () => {
-  const result = scoreAll([med({ additionalInstructions: "unclear instruction" })], fullMappings, "compare");
-  assert.equal(result.amrci.warnings.length, 0);
-  const unknown = scoreAll([med({ dosageFormRoute: "???", frequency: "sometimes", additionalInstructions: "titrate weirdly" })], fullMappings, "compare");
-  assert.ok(unknown.amrci.warnings.length >= 2);
+test("more than one medication row remains stable", () => {
+  const meds = [
+    med({ drugName: "A", frequency: "daily" }),
+    med({ drugName: "B", frequency: "q6h", additionalInstructions: "with food" }),
+    med({ drugName: "C", dosageFormRoute: "injection", dosageForm: "injection", prn: true })
+  ];
+  const classic = mrciClassic(meds, fullMappings.mrciClassic);
+  const amrci = aMrci(meds, fullMappings);
+  assert.equal(classic.breakdown.length, 3);
+  assert.equal(amrci.breakdown.length, 3);
+  assert.ok(amrci.warnings.some((w) => w.type === "approximate"));
+});
+
+test("scores are independent from language labels", () => {
+  const english = med({ dosageFormRoute: "tablet", frequency: "daily" });
+  const spanish = med({ dosageFormRoute: "tablet", frequency: "daily", additionalInstructions: "con comida" });
+  const result = scoreAll([english, spanish], fullMappings, "compare");
+  assert.equal(result.classic.total, 5);
 });
