@@ -9,5 +9,68 @@ export const es = {
   results: { mrci_total: "Total MRCI", amrci_total: "Total A-MRCI", abs_diff: "Diferencia absoluta", section_a: "Sección A", section_b: "Sección B", section_c: "Sección C", drug: "Fármaco", strength: "Concentración", dosage_form: "Forma farmacéutica", route: "Vía", frequency: "Frecuencia", prn: "PRN", additional_instructions: "Instrucciones adicionales", notes: "Notas", validated: "Validado", type: "Tipo", field: "Campo", message: "Mensaje", rules_applied: "Reglas aplicadas", section_diff: "Diferencia por sección", total: "Total" },
   parsing: { flags: "Banderas", low_confidence_fields: "Campos de baja confianza", source_text: "Evidencia" },
   errors: { drug_required: "Nombre del fármaco obligatorio", dosage_required: "Forma farmacéutica obligatoria", frequency_required: "Frecuencia obligatoria", cima_failed: "No se pudo consultar CIMA en este momento. Inténtelo de nuevo." },
+  clinical: {
+    medication_contribution: "Contribución del medicamento",
+    amrci_explanation: "Explicación A-MRCI",
+    amrci_classification: "Clasificación simplificada",
+    amrci_frequency_category: "Categoría de frecuencia",
+    amrci_special_handling: "Manejo especial",
+    amrci_warning: "Esta puntuación A-MRCI se basa en ponderación adaptada. Los resultados deben validarse antes de su uso en investigación.",
+    form: {
+      tablet_or_capsule_or_pill: "Comprimido/cápsula oral",
+      liquid_or_solution_or_suspension: "Líquido/solución oral",
+      inhaler_or_nebulizer: "Terapia inhalada (inhalador/nebulizador)",
+      injection: "Inyección",
+      topical_patch: "Parche tópico/transdérmico",
+      eye_or_ear_drop: "Gotas oftálmicas/óticas",
+      subcutaneous_device: "Dispositivo subcutáneo",
+      complex_device: "Dispositivo complejo",
+      oral_simple: "Oral simple",
+      oral_liquid: "Oral líquida",
+      inhaled: "Inhalada",
+      injectable: "Inyectable",
+      topical_or_transdermal: "Tópica/transdérmica",
+      ophthalmic_otologic: "Oftálmica/ótica",
+      device_complex: "Dispositivo complejo",
+      unknown: "Forma no clasificada"
+    },
+    frequency: {
+      once_daily: "Una vez al día",
+      twice_daily: "Dos veces al día",
+      three_times_daily: "Tres veces al día",
+      four_times_daily: "Cuatro veces al día",
+      every_6_hours: "Cada 6 horas",
+      every_4_hours: "Cada 4 horas",
+      weekly: "Semanal",
+      monthly: "Mensual",
+      daily_or_less: "Diaria o menor",
+      three_plus_daily: "Tres o más administraciones/día",
+      weekly_or_monthly: "Semanal o mensual",
+      unknown: "Frecuencia no clasificada"
+    },
+    direction: {
+      with_food: "Tomar con comida",
+      without_food: "Tomar en ayunas",
+      split_or_crush_or_mix: "Necesita fraccionar/triturar/mezclar",
+      taper_or_variable_schedule: "Pauta variable o descendente",
+      specific_time_of_day: "Horario específico del día",
+      inhaler_technique: "Técnica de inhalador",
+      monitoring_or_special_instruction: "Monitorización o instrucción especial",
+      food_related: "Administración relacionada con comida",
+      special_handling: "Manejo especial",
+      variable_schedule: "Pauta variable",
+      device_technique: "Técnica de dispositivo",
+      none: "Sin instrucciones adicionales"
+    },
+    interpretation: {
+      title: "Interpretación",
+      form: "Complejidad {level} por forma farmacéutica y vía de administración.",
+      frequency: "Contribución {level} de la frecuencia de administración.",
+      instructions: "Impacto {level} de las instrucciones adicionales.",
+      low: "baja",
+      moderate: "moderada",
+      high: "alta"
+    }
+  },
   modes: { classic: "Solo MRCI", amrci: "Solo A-MRCI", compare: "Comparar ambos" }
 };

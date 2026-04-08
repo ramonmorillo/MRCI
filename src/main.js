@@ -150,6 +150,105 @@ function translateFieldName(value = "") {
   return tr(fieldMap[value] || "") || value;
 }
 
+function humanizeFormKey(key = "") {
+  const map = {
+    tablet_or_capsule_or_pill: "clinical.form.tablet_or_capsule_or_pill",
+    liquid_or_solution_or_suspension: "clinical.form.liquid_or_solution_or_suspension",
+    inhaler_or_nebulizer: "clinical.form.inhaler_or_nebulizer",
+    injection: "clinical.form.injection",
+    topical_patch: "clinical.form.topical_patch",
+    eye_or_ear_drop: "clinical.form.eye_or_ear_drop",
+    subcutaneous_device: "clinical.form.subcutaneous_device",
+    complex_device: "clinical.form.complex_device",
+    oral_simple: "clinical.form.oral_simple",
+    oral_liquid: "clinical.form.oral_liquid",
+    inhaled: "clinical.form.inhaled",
+    injectable: "clinical.form.injectable",
+    topical_or_transdermal: "clinical.form.topical_or_transdermal",
+    ophthalmic_otologic: "clinical.form.ophthalmic_otologic",
+    device_complex: "clinical.form.device_complex",
+    unknown: "clinical.form.unknown"
+  };
+  return tr(map[key] || "") || key || tr("labels.missing");
+}
+
+function humanizeFrequencyKey(key = "") {
+  const map = {
+    once_daily: "clinical.frequency.once_daily",
+    twice_daily: "clinical.frequency.twice_daily",
+    three_times_daily: "clinical.frequency.three_times_daily",
+    four_times_daily: "clinical.frequency.four_times_daily",
+    every_6_hours: "clinical.frequency.every_6_hours",
+    every_4_hours: "clinical.frequency.every_4_hours",
+    weekly: "clinical.frequency.weekly",
+    monthly: "clinical.frequency.monthly",
+    daily_or_less: "clinical.frequency.daily_or_less",
+    three_plus_daily: "clinical.frequency.three_plus_daily",
+    weekly_or_monthly: "clinical.frequency.weekly_or_monthly",
+    unknown: "clinical.frequency.unknown"
+  };
+  return tr(map[key] || "") || key || tr("labels.missing");
+}
+
+function humanizeDirectionKeys(keys = []) {
+  if (!keys.length) return tr("clinical.direction.none");
+  const map = {
+    with_food: "clinical.direction.with_food",
+    without_food: "clinical.direction.without_food",
+    split_or_crush_or_mix: "clinical.direction.split_or_crush_or_mix",
+    taper_or_variable_schedule: "clinical.direction.taper_or_variable_schedule",
+    specific_time_of_day: "clinical.direction.specific_time_of_day",
+    inhaler_technique: "clinical.direction.inhaler_technique",
+    monitoring_or_special_instruction: "clinical.direction.monitoring_or_special_instruction",
+    food_related: "clinical.direction.food_related",
+    special_handling: "clinical.direction.special_handling",
+    variable_schedule: "clinical.direction.variable_schedule",
+    device_technique: "clinical.direction.device_technique",
+    none: "clinical.direction.none"
+  };
+  return keys.map((k) => tr(map[k] || "") || k).join(", ");
+}
+
+function interpretationBand(value = 0, lowCutoff = 1, highCutoff = 3) {
+  if (value <= lowCutoff) return tr("clinical.interpretation.low");
+  if (value >= highCutoff) return tr("clinical.interpretation.high");
+  return tr("clinical.interpretation.moderate");
+}
+
+function clinicianExplanation(medication) {
+  const mrciRule = medication.mrciRule || {};
+  const amrciRule = medication.aMrciRule || {};
+  const formLabel = humanizeFormKey(mrciRule.formKey);
+  const frequencyLabel = humanizeFrequencyKey(mrciRule.freqKey);
+  const instructionsLabel = humanizeDirectionKeys(mrciRule.dirKeys || []);
+  const prnLabel = mrciRule.prn ? tr("labels.yes") : tr("labels.no");
+  const aForm = humanizeFormKey(amrciRule.formKey);
+  const aFrequency = humanizeFrequencyKey(amrciRule.freqKey);
+  const aSpecialHandling = humanizeDirectionKeys(amrciRule.dirKeys || []);
+  return `<div class="clinical-explanation">
+    <p><strong>${tr("clinical.medication_contribution")}</strong></p>
+    <ul>
+      <li><strong>${tr("results.dosage_form")}:</strong> ${esc(formLabel)}</li>
+      <li><strong>${tr("results.frequency")}:</strong> ${esc(frequencyLabel)}</li>
+      <li><strong>${tr("results.additional_instructions")}:</strong> ${esc(instructionsLabel)}</li>
+      <li><strong>${tr("results.prn")}:</strong> ${esc(prnLabel)}</li>
+    </ul>
+    <p><strong>${tr("clinical.interpretation.title")}</strong></p>
+    <ul>
+      <li>${tr("clinical.interpretation.form", { level: interpretationBand(medication.sectionDiff?.A || 0, 0.5, 2) })}</li>
+      <li>${tr("clinical.interpretation.frequency", { level: interpretationBand(medication.sectionDiff?.B || 0, 0.5, 2) })}</li>
+      <li>${tr("clinical.interpretation.instructions", { level: interpretationBand(medication.sectionDiff?.C || 0, 0.5, 1.5) })}</li>
+    </ul>
+    <p><strong>${tr("clinical.amrci_explanation")}</strong></p>
+    <ul>
+      <li><strong>${tr("clinical.amrci_classification")}:</strong> ${esc(aForm)}</li>
+      <li><strong>${tr("clinical.amrci_frequency_category")}:</strong> ${esc(aFrequency)}</li>
+      <li><strong>${tr("clinical.amrci_special_handling")}:</strong> ${esc(aSpecialHandling)}</li>
+    </ul>
+    <p class="warning">${tr("clinical.amrci_warning")}</p>
+  </div>`;
+}
+
 function validateMedications() {
   return state.session.medications.flatMap((med, idx) => {
     const issues = [];
@@ -269,7 +368,7 @@ function summaryTab(scores) {
 }
 function byMedicationTab(scores) {
   if (!scores.comparison) return `<p>${tr("labels.comparison_required_med")}</p>`;
-  return `<table><thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("labels.why_score")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.mrci}</td><td>${m.aMrci}</td><td>${m.difference}</td><td><details><summary>${tr("labels.score_explanation")}</summary><p>${tr("results.total")}: ${m.mrci} / ${m.aMrci}</p><pre>${esc(JSON.stringify({ mrci: m.mrciRule, aMrci: m.aMrciRule }, null, 2))}</pre></details></td></tr>`).join("")}</tbody></table>`;
+  return `<table><thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("labels.why_score")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.mrci}</td><td>${m.aMrci}</td><td>${m.difference}</td><td><details><summary>${tr("labels.score_explanation")}</summary><p>${tr("results.total")}: ${m.mrci} / ${m.aMrci}</p>${clinicianExplanation(m)}${state.session.debugMode ? `<pre>${esc(JSON.stringify({ mrci: m.mrciRule, aMrci: m.aMrciRule }, null, 2))}</pre>` : ""}</details></td></tr>`).join("")}</tbody></table>`;
 }
 function bySectionTab(scores) { if (!scores.comparison) return `<p>${tr("labels.comparison_required_section")}</p>`; return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.section_a")}</th><th>${tr("results.section_b")}</th><th>${tr("results.section_c")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.sectionDiff.A}</td><td>${m.sectionDiff.B}</td><td>${m.sectionDiff.C}</td></tr>`).join("")}</tbody></table>`; }
 function warningsTab(scores) {

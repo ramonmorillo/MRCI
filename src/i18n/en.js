@@ -9,5 +9,68 @@ export const en = {
   results: { mrci_total: "MRCI Total", amrci_total: "A-MRCI Total", abs_diff: "Absolute Difference", section_a: "Section A", section_b: "Section B", section_c: "Section C", drug: "Drug", strength: "Strength", dosage_form: "Dosage form", route: "Route", frequency: "Frequency", prn: "PRN", additional_instructions: "Additional instructions", notes: "Notes", validated: "Validated", type: "Type", field: "Field", message: "Message", rules_applied: "Rules applied", section_diff: "Section diff", total: "Total" },
   parsing: { flags: "Flags", low_confidence_fields: "Low confidence fields", source_text: "Evidence" },
   errors: { drug_required: "Drug name required", dosage_required: "Dosage form required", frequency_required: "Frequency required", cima_failed: "Unable to query CIMA right now. Please try again." },
+  clinical: {
+    medication_contribution: "Medication contribution",
+    amrci_explanation: "A-MRCI explanation",
+    amrci_classification: "Simplified classification",
+    amrci_frequency_category: "Frequency category",
+    amrci_special_handling: "Special handling",
+    amrci_warning: "This A-MRCI score is based on adapted weighting. Results should be validated before use in research.",
+    form: {
+      tablet_or_capsule_or_pill: "Oral tablet/capsule",
+      liquid_or_solution_or_suspension: "Oral liquid/solution",
+      inhaler_or_nebulizer: "Inhaled therapy (inhaler/nebulizer)",
+      injection: "Injection",
+      topical_patch: "Topical/transdermal patch",
+      eye_or_ear_drop: "Eye/ear drops",
+      subcutaneous_device: "Subcutaneous device",
+      complex_device: "Complex device",
+      oral_simple: "Oral simple",
+      oral_liquid: "Oral liquid",
+      inhaled: "Inhaled",
+      injectable: "Injectable",
+      topical_or_transdermal: "Topical/transdermal",
+      ophthalmic_otologic: "Ophthalmic/otologic",
+      device_complex: "Device complex",
+      unknown: "Unclassified form"
+    },
+    frequency: {
+      once_daily: "Once daily",
+      twice_daily: "Twice daily",
+      three_times_daily: "Three times daily",
+      four_times_daily: "Four times daily",
+      every_6_hours: "Every 6 hours",
+      every_4_hours: "Every 4 hours",
+      weekly: "Weekly",
+      monthly: "Monthly",
+      daily_or_less: "Daily or less",
+      three_plus_daily: "Three or more administrations/day",
+      weekly_or_monthly: "Weekly or monthly",
+      unknown: "Unclassified frequency"
+    },
+    direction: {
+      with_food: "Take with food",
+      without_food: "Take on an empty stomach",
+      split_or_crush_or_mix: "Tablet manipulation or mixing needed",
+      taper_or_variable_schedule: "Tapering/variable schedule",
+      specific_time_of_day: "Specific time of day",
+      inhaler_technique: "Inhaler technique instructions",
+      monitoring_or_special_instruction: "Monitoring or special instruction",
+      food_related: "Food-related administration",
+      special_handling: "Special handling",
+      variable_schedule: "Variable schedule",
+      device_technique: "Device technique",
+      none: "No additional instructions"
+    },
+    interpretation: {
+      title: "Interpretation",
+      form: "{level} complexity due to dosage form and administration route.",
+      frequency: "{level} contribution from administration frequency.",
+      instructions: "{level} impact from additional instructions.",
+      low: "Low",
+      moderate: "Moderate",
+      high: "High"
+    }
+  },
   modes: { classic: "MRCI only", amrci: "A-MRCI only", compare: "Compare both" }
 };
