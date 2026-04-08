@@ -13,7 +13,7 @@ function localizedWarningMessage(w, tr) {
   return tr(map[w] || "") || w;
 }
 
-export function reportHtml(session, scores, lang, tr) {
+export function reportHtml(session, scores, lang, tr, outputLayer = "clinical") {
   const printDate = new Date().toLocaleDateString(lang === "es" ? "es-ES" : "en-US");
   const modeLabel = session.scoringMode === "classic" ? tr("modes.classic") : session.scoringMode === "amrci" ? tr("modes.amrci") : tr("modes.compare");
   const regimenRows = (session?.medications || [])
@@ -21,7 +21,7 @@ export function reportHtml(session, scores, lang, tr) {
     .join("");
 
   const rows = (scores?.comparison || [])
-    .map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.mrci}</td><td>${m.aMrci}</td><td>${m.difference}</td><td>A:${m.sectionDiff.A} B:${m.sectionDiff.B} C:${m.sectionDiff.C}</td></tr>`)
+    .map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.mrci}</td><td>${m.aMrci}</td><td>${m.difference}</td><td>A:${m.sectionDiff.A} B:${m.sectionDiff.B} C:${m.sectionDiff.C}</td>${outputLayer === "technical" ? `<td><pre>${esc(JSON.stringify({ mrciRule: m.mrciRule, aMrciRule: m.aMrciRule }, null, 2))}</pre></td>` : ""}</tr>`)
     .join("");
 
   const warningRows = ([...(scores?.classic?.warnings || []), ...(scores?.amrci?.warnings || [])])
@@ -32,6 +32,7 @@ export function reportHtml(session, scores, lang, tr) {
   <h2>${tr("labels.report_title")}</h2>
   <p><strong>${tr("labels.date")}:</strong> ${printDate}</p>
   <p><strong>${tr("labels.scoring_mode")}:</strong> ${modeLabel}</p>
+  <p><strong>${tr("labels.output_layer")}:</strong> ${outputLayer === "technical" ? tr("labels.technical_view") : tr("labels.clinical_view")}</p>
   <h3>${tr("labels.regimen_summary")}</h3>
   <table>
     <thead><tr><th>${tr("results.drug")}</th><th>${tr("results.dosage_form")}</th><th>${tr("results.frequency")}</th><th>${tr("results.validated")}</th></tr></thead>
@@ -42,8 +43,8 @@ export function reportHtml(session, scores, lang, tr) {
   <p>${tr("results.amrci_total")}: ${scores?.amrci?.total ?? tr("labels.no_data")} (A:${scores?.amrci?.subtotalA ?? "-"} B:${scores?.amrci?.subtotalB ?? "-"} C:${scores?.amrci?.subtotalC ?? "-"})</p>
   <p>${tr("results.abs_diff")}: ${scores?.delta ?? tr("labels.no_data")}</p>
   <table>
-    <thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("results.section_diff")}</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="5">${tr("labels.no_data")}</td></tr>`}</tbody>
+    <thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("results.section_diff")}</th>${outputLayer === "technical" ? `<th>${tr("labels.technical_trace")}</th>` : ""}</tr></thead>
+    <tbody>${rows || `<tr><td colspan="${outputLayer === "technical" ? 6 : 5}">${tr("labels.no_data")}</td></tr>`}</tbody>
   </table>
   <h3>${tr("labels.mapping_warnings")}</h3>
   <ul>${warningRows || `<li>${tr("labels.no_mapping_warnings")}</li>`}</ul>

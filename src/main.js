@@ -21,7 +21,7 @@ const ROUTE_OPTIONS = [
   { key: "otic", label_en: "Otic", label_es: "Ótica" },
   { key: "other", label_en: "Other", label_es: "Otra" }
 ];
-const RESULTS_TABS = ["summary", "by-medication", "by-section", "warnings"];
+const RESULTS_TABS = ["summary", "by-medication", "calculation", "warnings"];
 const STEPS = ["input", "validation", "results", "comparison", "report"];
 const DOSAGE_FORM_LABELS = {
   tablet: { label_en: "Tablet", label_es: "Comprimido", key: "tablet" },
@@ -92,6 +92,7 @@ const state = {
   entryMedication: defaultMedication(),
   editingMedicationIdx: null
 };
+if (!state.session.outputLayer) state.session.outputLayer = state.session.debugMode ? "technical" : "clinical";
 
 const root = document.querySelector("#app");
 const esc = (v = "") => String(v).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
@@ -215,6 +216,15 @@ function interpretationBand(value = 0, lowCutoff = 1, highCutoff = 3) {
   return tr("clinical.interpretation.moderate");
 }
 
+function describeComplexityNarrative(medication) {
+  const statements = [
+    tr("clinical.interpretation.form", { level: interpretationBand(medication.sectionDiff?.A || 0, 0.5, 2) }),
+    tr("clinical.interpretation.frequency", { level: interpretationBand(medication.sectionDiff?.B || 0, 0.5, 2) }),
+    tr("clinical.interpretation.instructions", { level: interpretationBand(medication.sectionDiff?.C || 0, 0.5, 1.5) })
+  ];
+  return statements.join(" ");
+}
+
 function clinicianExplanation(medication) {
   const mrciRule = medication.mrciRule || {};
   const amrciRule = medication.aMrciRule || {};
@@ -222,31 +232,32 @@ function clinicianExplanation(medication) {
   const frequencyLabel = humanizeFrequencyKey(mrciRule.freqKey);
   const instructionsLabel = humanizeDirectionKeys(mrciRule.dirKeys || []);
   const prnLabel = mrciRule.prn ? tr("labels.yes") : tr("labels.no");
+  const routeLabel = medication.route || tr("labels.missing");
+  const narrative = describeComplexityNarrative(medication);
   const aForm = humanizeFormKey(amrciRule.formKey);
   const aFrequency = humanizeFrequencyKey(amrciRule.freqKey);
   const aSpecialHandling = humanizeDirectionKeys(amrciRule.dirKeys || []);
-  return `<div class="clinical-explanation">
-    <p><strong>${tr("clinical.medication_contribution")}</strong></p>
-    <ul>
-      <li><strong>${tr("results.dosage_form")}:</strong> ${esc(formLabel)}</li>
-      <li><strong>${tr("results.frequency")}:</strong> ${esc(frequencyLabel)}</li>
-      <li><strong>${tr("results.additional_instructions")}:</strong> ${esc(instructionsLabel)}</li>
-      <li><strong>${tr("results.prn")}:</strong> ${esc(prnLabel)}</li>
-    </ul>
-    <p><strong>${tr("clinical.interpretation.title")}</strong></p>
-    <ul>
-      <li>${tr("clinical.interpretation.form", { level: interpretationBand(medication.sectionDiff?.A || 0, 0.5, 2) })}</li>
-      <li>${tr("clinical.interpretation.frequency", { level: interpretationBand(medication.sectionDiff?.B || 0, 0.5, 2) })}</li>
-      <li>${tr("clinical.interpretation.instructions", { level: interpretationBand(medication.sectionDiff?.C || 0, 0.5, 1.5) })}</li>
-    </ul>
-    <p><strong>${tr("clinical.amrci_explanation")}</strong></p>
-    <ul>
-      <li><strong>${tr("clinical.amrci_classification")}:</strong> ${esc(aForm)}</li>
-      <li><strong>${tr("clinical.amrci_frequency_category")}:</strong> ${esc(aFrequency)}</li>
-      <li><strong>${tr("clinical.amrci_special_handling")}:</strong> ${esc(aSpecialHandling)}</li>
-    </ul>
-    <p class="warning">${tr("clinical.amrci_warning")}</p>
-  </div>`;
+
+  return `<article class="medication-card">
+    <header>
+      <h4>${esc(medication.drugName || tr("labels.missing"))}</h4>
+      <p>${esc(formLabel)} · ${esc(routeLabel)} · ${esc(frequencyLabel)}</p>
+    </header>
+    <div class="clinical-meta">
+      <span><strong>${tr("results.prn")}:</strong> ${esc(prnLabel)}</span>
+      <span><strong>${tr("results.additional_instructions")}:</strong> ${esc(instructionsLabel)}</span>
+    </div>
+    <p class="clinical-narrative">${narrative}</p>
+    <div class="info-soft">
+      <strong>${tr("clinical.amrci_explanation")}:</strong>
+      ${tr("clinical.amrci_clinical_summary", {
+        form: aForm,
+        frequency: aFrequency,
+        handling: aSpecialHandling
+      })}
+    </div>
+    <p class="warning-soft">${tr("clinical.amrci_warning")}</p>
+  </article>`;
 }
 
 function validateMedications() {
@@ -368,23 +379,37 @@ function summaryTab(scores) {
 }
 function byMedicationTab(scores) {
   if (!scores.comparison) return `<p>${tr("labels.comparison_required_med")}</p>`;
-  return `<table><thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("labels.why_score")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.mrci}</td><td>${m.aMrci}</td><td>${m.difference}</td><td><details><summary>${tr("labels.score_explanation")}</summary><p>${tr("results.total")}: ${m.mrci} / ${m.aMrci}</p>${clinicianExplanation(m)}${state.session.debugMode ? `<pre>${esc(JSON.stringify({ mrci: m.mrciRule, aMrci: m.aMrciRule }, null, 2))}</pre>` : ""}</details></td></tr>`).join("")}</tbody></table>`;
+  if (state.session.outputLayer === "technical") {
+    return `<table><thead><tr><th>${tr("results.drug")}</th><th>MRCI</th><th>A-MRCI</th><th>${tr("results.abs_diff")}</th><th>${tr("labels.technical_trace")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.mrci}</td><td>${m.aMrci}</td><td>${m.difference}</td><td><details><summary>${tr("labels.technical_trace")}</summary><pre>${esc(JSON.stringify({ normalizedMedication: m.medication, mrciRule: m.mrciRule, aMrciRule: m.aMrciRule, sectionDiff: m.sectionDiff }, null, 2))}</pre></details></td></tr>`).join("")}</tbody></table>`;
+  }
+  return `<div class="medication-stack">${scores.comparison.map((m) => clinicianExplanation(m)).join("")}</div>`;
 }
-function bySectionTab(scores) { if (!scores.comparison) return `<p>${tr("labels.comparison_required_section")}</p>`; return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.section_a")}</th><th>${tr("results.section_b")}</th><th>${tr("results.section_c")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.sectionDiff.A}</td><td>${m.sectionDiff.B}</td><td>${m.sectionDiff.C}</td></tr>`).join("")}</tbody></table>`; }
+function bySectionTab(scores) {
+  if (!scores.comparison) return `<p>${tr("labels.comparison_required_section")}</p>`;
+  const rows = scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.sectionDiff.A}</td><td>${m.sectionDiff.B}</td><td>${m.sectionDiff.C}</td></tr>`).join("");
+  if (state.session.outputLayer === "technical") {
+    return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.section_a")}</th><th>${tr("results.section_b")}</th><th>${tr("results.section_c")}</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  return `<section class="card section-overview"><h3>${tr("labels.section_breakdown")}</h3><table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.section_a")}</th><th>${tr("results.section_b")}</th><th>${tr("results.section_c")}</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+}
 function warningsTab(scores) {
   const warnings = [...(scores.classic?.warnings || []), ...(scores.amrci?.warnings || [])];
   if (!warnings.length) return `<p>${tr("labels.no_warnings")}</p>`;
-  return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.type")}</th><th>${tr("results.field")}</th><th>${tr("results.message")}</th><th>${tr("labels.manual_correction")}</th></tr></thead><tbody>${warnings.map((w, i) => `<tr><td>${esc(w.medicationName)}</td><td>${w.type === "unmapped" ? tr("warnings.unmapped") : esc(translateDynamicText(w.type))}</td><td>${esc(translateFieldName(w.field))}</td><td>${esc(translateDynamicText(w.message))}<br><strong>${tr("warnings.needs_manual_review")}</strong></td><td><input placeholder="oral_simple" data-fix-med="${w.medicationId}" data-fix-field="${w.field}" data-fix-row="${i}"></td></tr>`).join("")}</tbody></table><button id="applyCorrections">${tr("buttons.apply_corrections")}</button>`;
-}
-function debugTab(scores) {
-  if (!state.session.debugMode) return "";
-  return `<details open><summary>${tr("labels.debug_mode")}</summary><pre>${esc(JSON.stringify({ classic: scores.classic?.debug, amrci: scores.amrci?.debug }, null, 2))}</pre></details>`;
+  return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.type")}</th><th>${tr("results.field")}</th><th>${tr("results.message")}</th>${state.session.outputLayer === "technical" ? `<th>${tr("labels.manual_correction")}</th>` : ""}</tr></thead><tbody>${warnings.map((w, i) => `<tr><td>${esc(w.medicationName)}</td><td>${w.type === "unmapped" ? tr("warnings.unmapped") : esc(translateDynamicText(w.type))}</td><td>${esc(translateFieldName(w.field))}</td><td>${esc(translateDynamicText(w.message))}<br><strong>${tr("warnings.needs_manual_review")}</strong></td>${state.session.outputLayer === "technical" ? `<td><input placeholder="oral_simple" data-fix-med="${w.medicationId}" data-fix-field="${w.field}" data-fix-row="${i}"></td>` : ""}</tr>`).join("")}</tbody></table>${state.session.outputLayer === "technical" ? `<button id="applyCorrections">${tr("buttons.apply_corrections")}</button>` : ""}`;
 }
 function renderResults(scores) {
   if (!scores) return `<h2>${tr("nav.results")}</h2><p>${tr("labels.run_to_see_results")}</p>`;
-  const tabs = RESULTS_TABS.map((tab) => `<button class="tab-btn ${state.resultsTab === tab ? "active" : ""}" data-tab="${tab}">${tab === "by-medication" ? tr("labels.by_medication") : tab === "by-section" ? tr("labels.by_section") : tab === "warnings" ? tr("labels.mapping_warnings") : tr("labels.summary")}</button>`).join("");
-  const tabBody = state.resultsTab === "summary" ? summaryTab(scores) : state.resultsTab === "by-medication" ? byMedicationTab(scores) : state.resultsTab === "by-section" ? bySectionTab(scores) : warningsTab(scores);
-  return `<h2>${tr("nav.results")}</h2><p>${tr("labels.validated_count")}: ${scores.eligibleCount}</p><div class="toolbar">${tabs}</div>${tabBody}<section class="card"><h3>${tr("labels.why_score")}</h3><p>${tr("labels.score_explanation")}</p>${byMedicationTab(scores)}</section>${debugTab(scores)}`;
+  const tabs = RESULTS_TABS.map((tab) => `<button class="tab-btn ${state.resultsTab === tab ? "active" : ""}" data-tab="${tab}">${tab === "by-medication" ? tr("labels.by_medication") : tab === "calculation" ? tr("labels.how_calculated") : tab === "warnings" ? tr("labels.mapping_warnings") : tr("labels.summary")}</button>`).join("");
+  const tabBody = state.resultsTab === "summary" ? summaryTab(scores) : state.resultsTab === "by-medication" ? byMedicationTab(scores) : state.resultsTab === "calculation" ? bySectionTab(scores) : warningsTab(scores);
+  return `<h2>${tr("nav.results")}</h2>
+  <p>${tr("labels.validated_count")}: ${scores.eligibleCount}</p>
+  <div class="results-layout">
+    <section class="result-block">${summaryTab(scores)}</section>
+    <section class="result-block">
+      <div class="toolbar">${tabs}</div>
+      ${tabBody}
+    </section>
+  </div>`;
 }
 
 function sectionVisible(step) {
@@ -405,9 +430,27 @@ function render() {
   const lang = state.session.language || "en";
   const blockingAiReview = state.session.inputMode === "ai" && state.session.lastParseResult && !state.parseUi.confirmed;
 
-  root.innerHTML = `<header class="topbar hero-header"><div><p class="eyebrow">MRCI / A-MRCI</p><h1>${tr("app_title")}</h1><p>${tr("labels.hero_subtitle")}</p><p class="disclaimer">${tr("disclaimer")}</p></div>
-  <div class="toolbar toolbar-top"><label>${tr("labels.language")} <select id="langSelect"><option value="en" ${lang === "en" ? "selected" : ""}>EN</option><option value="es" ${lang === "es" ? "selected" : ""}>ES</option></select></label>
-  <label class="inline">${tr("labels.debug_mode")}<input id="debugMode" type="checkbox" ${state.session.debugMode ? "checked" : ""}></label><button id="toggleHelp" class="ghost">${tr("nav.help")}</button><button id="resetSession" class="ghost">${tr("nav.reset")}</button></div></header>
+  root.innerHTML = `<header class="topbar hero-header">
+  <div>
+    <p class="eyebrow">MRCI / A-MRCI</p>
+    <h1>${tr("app_title")}</h1>
+    <p>${tr("labels.hero_subtitle")}</p>
+    <p class="disclaimer">${tr("disclaimer")}</p>
+  </div>
+  <div class="toolbar toolbar-top">
+    <label>${tr("labels.language")} <select id="langSelect"><option value="en" ${lang === "en" ? "selected" : ""}>EN</option><option value="es" ${lang === "es" ? "selected" : ""}>ES</option></select></label>
+    <div class="view-toggle-wrap">
+      <p>${tr("labels.output_layer")}</p>
+      <div class="segmented">
+        <button data-output-layer="clinical" class="${(state.session.outputLayer || "clinical") === "clinical" ? "active" : ""}">${tr("labels.clinical_view")}</button>
+        <button data-output-layer="technical" class="${state.session.outputLayer === "technical" ? "active" : ""}">${tr("labels.technical_view")}</button>
+      </div>
+      <small>${tr("tooltips.technical_view")}</small>
+    </div>
+    <button id="toggleHelp" class="ghost">${tr("nav.help")}</button>
+    <button id="resetSession" class="ghost">${tr("nav.reset")}</button>
+  </div>
+  </header>
 
   <nav class="stepper">${STEPS.map((s) => `<button class="step ${state.activeStep === s ? "active" : ""}" data-step="${s}">${tr(`nav.${s}`)}</button>`).join("")}</nav>
 
@@ -430,7 +473,7 @@ function render() {
   <section class="${sectionVisible("results")}">${renderResults(state.scored)}</section>
 
   <section class="${sectionVisible("comparison")}">${state.scored ? bySectionTab(state.scored) + byMedicationTab(state.scored) : `<p>${tr("labels.run_to_see_results")}</p>`}</section>
-  <section class="${sectionVisible("report")}"><h2>${tr("nav.report")}</h2><p>${tr("labels.report_ready_hint")}</p><div class="toolbar"><button id="reportPrintBtn">${tr("buttons.print_report")}</button><button id="reportDownloadBtn">${tr("buttons.download_report")}</button></div><section id="printable" class="printable">${reportHtml(state.session, state.scored, state.session.language, tr)}</section></section>
+  <section class="${sectionVisible("report")}"><h2>${tr("nav.report")}</h2><p>${tr("labels.report_ready_hint")}</p><div class="toolbar"><button id="reportPrintBtn">${tr("buttons.print_report")}</button><button id="reportDownloadBtn">${tr("buttons.download_report")}</button></div><section id="printable" class="printable">${reportHtml(state.session, state.scored, state.session.language, tr, state.session.outputLayer || "clinical")}</section></section>
   ${state.showHelp ? `<dialog open class="help-dialog"><h3>${tr("nav.help")}</h3><p>${tr("labels.help_body")}</p><button id="closeHelp">OK</button></dialog>` : ""}`;
 
   document.querySelectorAll("select[data-entry-field='additionalInstructionsMulti']").forEach((el) => {
@@ -542,8 +585,12 @@ function wireEvents() {
   });
 
   document.querySelector("#langSelect").onchange = (e) => { state.session.language = e.target.value; persist(); };
-  const debugMode = document.querySelector("#debugMode");
-  if (debugMode) debugMode.onchange = (e) => { state.session.debugMode = e.target.checked; persist(); };
+  document.querySelectorAll("[data-output-layer]").forEach((el) => {
+    el.onclick = (e) => {
+      state.session.outputLayer = e.currentTarget.dataset.outputLayer;
+      persist();
+    };
+  });
   document.querySelector("#toggleHelp").onclick = () => { state.showHelp = true; render(); };
   const closeHelp = document.querySelector("#closeHelp");
   if (closeHelp) closeHelp.onclick = () => { state.showHelp = false; render(); };
