@@ -12,13 +12,21 @@ export const mrciClassicAdditionalDirections = {
   keywords: {
     "with food": "with_food",
     "take with meals": "with_food",
+    "con comida": "with_food",
+    "con las comidas": "with_food",
     "empty stomach": "without_food",
+    "en ayunas": "without_food",
     "before breakfast": "specific_time_of_day",
     "at bedtime": "specific_time_of_day",
+    "antes del desayuno": "specific_time_of_day",
+    "al acostarse": "specific_time_of_day",
     alternate: "taper_or_variable_schedule",
     taper: "taper_or_variable_schedule",
+    alternante: "taper_or_variable_schedule",
     "rinse mouth": "inhaler_technique",
+    "enjuagar la boca": "inhaler_technique",
     "shake well": "monitoring_or_special_instruction",
-    monitor: "monitoring_or_special_instruction"
+    monitor: "monitoring_or_special_instruction",
+    monitorizar: "monitoring_or_special_instruction"
   }
 };

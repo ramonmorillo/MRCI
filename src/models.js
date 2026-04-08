@@ -38,5 +38,6 @@ export const defaultSession = () => ({
   lastValidatedRegimen: null,
   manualCorrectionsLog: [],
   aMrciCorrections: {},
+  debugMode: false,
   medications: []
 });

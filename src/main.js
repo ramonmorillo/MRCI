@@ -123,7 +123,13 @@ function translateDynamicText(value = "") {
     "assumed-not-prn": "warnings.assumed_not_prn",
     "One or more A-MRCI additional direction mappings missing": "warnings.one_or_more_missing",
     "A-MRCI dosage form not mapped": "warnings.amrci_form_unmapped",
-    "A-MRCI frequency not mapped": "warnings.amrci_frequency_unmapped"
+    "A-MRCI frequency not mapped": "warnings.amrci_frequency_unmapped",
+    "A-MRCI score uses approximation mappings and requires local validation": "warnings.amrci_approximate",
+    "Field inferred from available row data": "warnings.inferred_field",
+    "MRCI dosage form not mapped": "warnings.mrci_form_unmapped",
+    "MRCI frequency not mapped": "warnings.mrci_frequency_unmapped",
+    approximate: "warnings.approximate",
+    inferred: "warnings.inferred"
   };
   return tr(k[value] || "") || value;
 }
@@ -255,7 +261,11 @@ function comparisonBars(scores) {
 function summaryTab(scores) {
   const c = scores.classic;
   const a = scores.amrci;
-  return `<div class="cards"><article><h3>${tr("results.mrci_total")}</h3><p class="hero">${c?.total ?? tr("labels.no_data")}</p><p>${tr("results.section_a")}:${c?.subtotalA ?? "-"} ${tr("results.section_b")}:${c?.subtotalB ?? "-"} ${tr("results.section_c")}:${c?.subtotalC ?? "-"}</p></article><article><h3>${tr("results.amrci_total")}</h3><p class="hero">${a?.total ?? tr("labels.no_data")}</p><p>${tr("results.section_a")}:${a?.subtotalA ?? "-"} ${tr("results.section_b")}:${a?.subtotalB ?? "-"} ${tr("results.section_c")}:${a?.subtotalC ?? "-"}</p></article><article><h3>${tr("results.abs_diff")}</h3><p class="hero">${scores.delta}</p></article></div>${comparisonBars(scores)}`;
+  return `<div class="score-grid">
+    <article class="score-card primary"><h3>${tr("results.mrci_total")}</h3><p class="hero">${c?.total ?? tr("labels.no_data")}</p><p>${tr("results.section_a")}: ${c?.subtotalA ?? "-"} · ${tr("results.section_b")}: ${c?.subtotalB ?? "-"} · ${tr("results.section_c")}: ${c?.subtotalC ?? "-"}</p></article>
+    <article class="score-card accent"><h3>${tr("results.amrci_total")}</h3><p class="hero">${a?.total ?? tr("labels.no_data")}</p><p>${tr("results.section_a")}: ${a?.subtotalA ?? "-"} · ${tr("results.section_b")}: ${a?.subtotalB ?? "-"} · ${tr("results.section_c")}: ${a?.subtotalC ?? "-"}</p></article>
+    <article class="score-card delta"><h3>${tr("results.abs_diff")}</h3><p class="hero">${scores.delta}</p><p>${tr("labels.section_breakdown")}</p></article>
+  </div>${comparisonBars(scores)}`;
 }
 function byMedicationTab(scores) {
   if (!scores.comparison) return `<p>${tr("labels.comparison_required_med")}</p>`;
@@ -263,15 +273,19 @@ function byMedicationTab(scores) {
 }
 function bySectionTab(scores) { if (!scores.comparison) return `<p>${tr("labels.comparison_required_section")}</p>`; return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.section_a")}</th><th>${tr("results.section_b")}</th><th>${tr("results.section_c")}</th></tr></thead><tbody>${scores.comparison.map((m) => `<tr><td>${esc(m.drugName)}</td><td>${m.sectionDiff.A}</td><td>${m.sectionDiff.B}</td><td>${m.sectionDiff.C}</td></tr>`).join("")}</tbody></table>`; }
 function warningsTab(scores) {
-  const warnings = scores.amrci?.warnings || [];
+  const warnings = [...(scores.classic?.warnings || []), ...(scores.amrci?.warnings || [])];
   if (!warnings.length) return `<p>${tr("labels.no_warnings")}</p>`;
-  return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.type")}</th><th>${tr("results.field")}</th><th>${tr("results.message")}</th><th>${tr("labels.manual_correction")}</th></tr></thead><tbody>${warnings.map((w, i) => `<tr><td>${esc(w.medicationName)}</td><td>${w.type === "unmapped" ? tr("warnings.unmapped") : esc(w.type)}</td><td>${esc(translateFieldName(w.field))}</td><td>${esc(translateDynamicText(w.message))}<br><strong>${tr("warnings.needs_manual_review")}</strong></td><td><input placeholder="oral_simple" data-fix-med="${w.medicationId}" data-fix-field="${w.field}" data-fix-row="${i}"></td></tr>`).join("")}</tbody></table><button id="applyCorrections">${tr("buttons.apply_corrections")}</button>`;
+  return `<table><thead><tr><th>${tr("results.drug")}</th><th>${tr("results.type")}</th><th>${tr("results.field")}</th><th>${tr("results.message")}</th><th>${tr("labels.manual_correction")}</th></tr></thead><tbody>${warnings.map((w, i) => `<tr><td>${esc(w.medicationName)}</td><td>${w.type === "unmapped" ? tr("warnings.unmapped") : esc(translateDynamicText(w.type))}</td><td>${esc(translateFieldName(w.field))}</td><td>${esc(translateDynamicText(w.message))}<br><strong>${tr("warnings.needs_manual_review")}</strong></td><td><input placeholder="oral_simple" data-fix-med="${w.medicationId}" data-fix-field="${w.field}" data-fix-row="${i}"></td></tr>`).join("")}</tbody></table><button id="applyCorrections">${tr("buttons.apply_corrections")}</button>`;
+}
+function debugTab(scores) {
+  if (!state.session.debugMode) return "";
+  return `<details open><summary>${tr("labels.debug_mode")}</summary><pre>${esc(JSON.stringify({ classic: scores.classic?.debug, amrci: scores.amrci?.debug }, null, 2))}</pre></details>`;
 }
 function renderResults(scores) {
   if (!scores) return `<h2>${tr("nav.results")}</h2><p>${tr("labels.run_to_see_results")}</p>`;
   const tabs = RESULTS_TABS.map((tab) => `<button class="tab-btn ${state.resultsTab === tab ? "active" : ""}" data-tab="${tab}">${tab === "by-medication" ? tr("labels.by_medication") : tab === "by-section" ? tr("labels.by_section") : tab === "warnings" ? tr("labels.mapping_warnings") : tr("labels.summary")}</button>`).join("");
   const tabBody = state.resultsTab === "summary" ? summaryTab(scores) : state.resultsTab === "by-medication" ? byMedicationTab(scores) : state.resultsTab === "by-section" ? bySectionTab(scores) : warningsTab(scores);
-  return `<h2>${tr("nav.results")}</h2><p>${tr("labels.validated_count")}: ${scores.eligibleCount}</p><div class="toolbar">${tabs}</div>${tabBody}`;
+  return `<h2>${tr("nav.results")}</h2><p>${tr("labels.validated_count")}: ${scores.eligibleCount}</p><div class="toolbar">${tabs}</div>${tabBody}<section class="card"><h3>${tr("labels.why_score")}</h3><p>${tr("labels.score_explanation")}</p>${byMedicationTab(scores)}</section>${debugTab(scores)}`;
 }
 
 function sectionVisible(step) {
@@ -292,9 +306,9 @@ function render() {
   const lang = state.session.language || "en";
   const blockingAiReview = state.session.inputMode === "ai" && state.session.lastParseResult && !state.parseUi.confirmed;
 
-  root.innerHTML = `<header class="topbar"><div><h1>${tr("app_title")}</h1><p class="disclaimer">${tr("disclaimer")}</p></div>
+  root.innerHTML = `<header class="topbar hero-header"><div><p class="eyebrow">MRCI / A-MRCI</p><h1>${tr("app_title")}</h1><p>${tr("labels.hero_subtitle")}</p><p class="disclaimer">${tr("disclaimer")}</p></div>
   <div class="toolbar toolbar-top"><label>${tr("labels.language")} <select id="langSelect"><option value="en" ${lang === "en" ? "selected" : ""}>EN</option><option value="es" ${lang === "es" ? "selected" : ""}>ES</option></select></label>
-  <button id="toggleHelp" class="ghost">${tr("nav.help")}</button><button id="resetSession" class="ghost">${tr("nav.reset")}</button></div></header>
+  <label class="inline">${tr("labels.debug_mode")}<input id="debugMode" type="checkbox" ${state.session.debugMode ? "checked" : ""}></label><button id="toggleHelp" class="ghost">${tr("nav.help")}</button><button id="resetSession" class="ghost">${tr("nav.reset")}</button></div></header>
 
   <nav class="stepper">${STEPS.map((s) => `<button class="step ${state.activeStep === s ? "active" : ""}" data-step="${s}">${tr(`nav.${s}`)}</button>`).join("")}</nav>
 
@@ -429,6 +443,8 @@ function wireEvents() {
   });
 
   document.querySelector("#langSelect").onchange = (e) => { state.session.language = e.target.value; persist(); };
+  const debugMode = document.querySelector("#debugMode");
+  if (debugMode) debugMode.onchange = (e) => { state.session.debugMode = e.target.checked; persist(); };
   document.querySelector("#toggleHelp").onclick = () => { state.showHelp = true; render(); };
   const closeHelp = document.querySelector("#closeHelp");
   if (closeHelp) closeHelp.onclick = () => { state.showHelp = false; render(); };
