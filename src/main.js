@@ -431,14 +431,14 @@ function render() {
   const blockingAiReview = state.session.inputMode === "ai" && state.session.lastParseResult && !state.parseUi.confirmed;
 
   root.innerHTML = `<header class="topbar hero-header">
-  <div>
+  <div class="hero-copy">
     <p class="eyebrow">MRCI / A-MRCI</p>
     <h1>${tr("app_title")}</h1>
     <p>${tr("labels.hero_subtitle")}</p>
     <p class="disclaimer">${tr("disclaimer")}</p>
   </div>
   <div class="toolbar toolbar-top">
-    <label>${tr("labels.language")} <select id="langSelect"><option value="en" ${lang === "en" ? "selected" : ""}>EN</option><option value="es" ${lang === "es" ? "selected" : ""}>ES</option></select></label>
+    <label class="compact-control">${tr("labels.language")} <select id="langSelect"><option value="en" ${lang === "en" ? "selected" : ""}>EN</option><option value="es" ${lang === "es" ? "selected" : ""}>ES</option></select></label>
     <div class="view-toggle-wrap">
       <p>${tr("labels.output_layer")}</p>
       <div class="segmented">
@@ -447,15 +447,17 @@ function render() {
       </div>
       <small>${tr("tooltips.technical_view")}</small>
     </div>
-    <button id="toggleHelp" class="ghost">${tr("nav.help")}</button>
-    <button id="resetSession" class="ghost">${tr("nav.reset")}</button>
+    <div class="header-actions">
+      <button id="toggleHelp" class="ghost">${tr("nav.help")}</button>
+      <button id="resetSession" class="ghost">${tr("nav.reset")}</button>
+    </div>
   </div>
   </header>
 
   <nav class="stepper">${STEPS.map((s) => `<button class="step ${state.activeStep === s ? "active" : ""}" data-step="${s}">${tr(`nav.${s}`)}</button>`).join("")}</nav>
 
-  <section class="${sectionVisible("input")}"><h2>${tr("nav.input")}</h2>
-    <div class="toolbar stacked">
+  <section class="section-shell ${sectionVisible("input")}"><h2 class="section-heading">${tr("nav.input")}</h2>
+    <div class="toolbar stacked controls-grid">
       <label>${tr("labels.scoring_mode")}
       <select id="scoreMode"><option value="classic" ${state.session.scoringMode === "classic" ? "selected" : ""}>${tr("modes.classic")}</option><option value="amrci" ${state.session.scoringMode === "amrci" ? "selected" : ""}>${tr("modes.amrci")}</option><option value="compare" ${state.session.scoringMode === "compare" ? "selected" : ""}>${tr("modes.compare")}</option></select></label>
       <label>${tr("labels.input_mode")}
@@ -466,14 +468,14 @@ function render() {
     ${state.session.inputMode === "ai" ? `<p class="note">${tr("labels.reviewed_required")}</p><div class="split-view"><div><h3>${tr("labels.free_text")}</h3><textarea id="freeText" rows="12" placeholder="...">${esc(state.session.rawInputText || "")}</textarea><button id="parseText">${tr("buttons.parse")}</button></div><div><h3>${tr("labels.extraction_preview")}</h3>${parseReviewPane()}</div></div>` : `<p>${tr("labels.manual_workflow_active")}</p>`}
     <div class="entry-layout">${cimaSearchPanel()}${medicationEntryForm(validationMap)}${regimenPanel()}</div></section>
 
-  <section class="${sectionVisible("validation")}"><h2>${tr("nav.validation")}</h2>${state.validation.length ? `<ul class='issues'>${state.validation.map((i) => `<li>${i.msg} (#${i.idx + 1})</li>`).join("")}</ul>` : `<p class='ok'>${tr("labels.no_validation_issues")}</p>`}
+  <section class="section-shell ${sectionVisible("validation")}"><h2 class="section-heading">${tr("nav.validation")}</h2>${state.validation.length ? `<ul class='issues'>${state.validation.map((i) => `<li>${i.msg} (#${i.idx + 1})</li>`).join("")}</ul>` : `<p class='ok'>${tr("labels.no_validation_issues")}</p>`}
   ${blockingAiReview ? `<p class='issues'>${tr("labels.ai_review_blocking")}</p>` : ""}
   <button id="runCalc" ${(state.validation.length || blockingAiReview) ? "disabled" : ""}>${tr("buttons.calculate")}</button></section>
 
-  <section class="${sectionVisible("results")}">${renderResults(state.scored)}</section>
+  <section class="section-shell ${sectionVisible("results")}">${renderResults(state.scored)}</section>
 
-  <section class="${sectionVisible("comparison")}">${state.scored ? bySectionTab(state.scored) + byMedicationTab(state.scored) : `<p>${tr("labels.run_to_see_results")}</p>`}</section>
-  <section class="${sectionVisible("report")}"><h2>${tr("nav.report")}</h2><p>${tr("labels.report_ready_hint")}</p><div class="toolbar"><button id="reportPrintBtn">${tr("buttons.print_report")}</button><button id="reportDownloadBtn">${tr("buttons.download_report")}</button></div><section id="printable" class="printable">${reportHtml(state.session, state.scored, state.session.language, tr, state.session.outputLayer || "clinical")}</section></section>
+  <section class="section-shell ${sectionVisible("comparison")}"><h2 class="section-heading">${tr("nav.comparison")}</h2>${state.scored ? bySectionTab(state.scored) + byMedicationTab(state.scored) : `<p>${tr("labels.run_to_see_results")}</p>`}</section>
+  <section class="section-shell ${sectionVisible("report")}"><h2 class="section-heading">${tr("nav.report")}</h2><p>${tr("labels.report_ready_hint")}</p><div class="toolbar"><button id="reportPrintBtn">${tr("buttons.print_report")}</button><button id="reportDownloadBtn">${tr("buttons.download_report")}</button></div><section id="printable" class="printable">${reportHtml(state.session, state.scored, state.session.language, tr, state.session.outputLayer || "clinical")}</section></section>
   ${state.showHelp ? `<dialog open class="help-dialog"><h3>${tr("nav.help")}</h3><p>${tr("labels.help_body")}</p><button id="closeHelp">OK</button></dialog>` : ""}`;
 
   document.querySelectorAll("select[data-entry-field='additionalInstructionsMulti']").forEach((el) => {
